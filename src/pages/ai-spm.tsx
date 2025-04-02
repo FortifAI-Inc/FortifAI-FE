@@ -771,15 +771,11 @@ const AI_SPM: React.FC = () => {
     iamResources.forEach((resource, index) => {
       const x = startX + (spacing * (index + 1));
       const y = mainFrameY + 80;
-      console.error(`[Canvas Debug] Drawing IAM resource ${resource.name} at (${x}, ${y})`);
       drawNode(ctx, x, y, resource);
     });
 
     // Draw VPCs
-    console.error('[Canvas Debug] All nodes:', graphData.nodes);
     const vpcs = graphData.nodes.filter(isVPCNode);
-    console.error('[Canvas Debug] Filtered VPCs:', vpcs);
-    console.error(`[Canvas Debug] Found ${vpcs.length} VPCs to draw`);
     
     // Log EC2 instances
     const ec2Instances = graphData.nodes.filter(isEC2Node);
@@ -794,7 +790,6 @@ const AI_SPM: React.FC = () => {
       const vpcX = mainFrameX + fixedSectionSpacing + (vpcIndex * ((mainFrameWidth - 2 * fixedSectionSpacing) / vpcs.length));
       const vpcY = mainFrameY + 30 + fixedSectionHeight + fixedSectionSpacing;
 
-      console.error(`[Canvas Debug] Drawing VPC ${vpc.name} at (${vpcX}, ${vpcY})`);
       let nameTag = "";
 
       if (vpc.metadata.tags) {
@@ -836,7 +831,6 @@ const AI_SPM: React.FC = () => {
 
       // Draw VPC contents
       const subnets = graphData.nodes.filter(isSubnetNode);
-      console.error(`[Canvas Debug] Found ${subnets.length} total subnets, filtering for VPC ${vpc.name}:`, subnets);
 
       // Filter subnets for this VPC only
       const vpcSubnets = subnets.filter(subnet => {
@@ -872,7 +866,6 @@ const AI_SPM: React.FC = () => {
       matchingIGWs.forEach((igw, igwIndex) => {
         igw.metadata.x = vpcX + (vpc.metadata.width || 0) / 2;
         igw.metadata.y = vpcY + 15; // Position in the middle of the header band (30px height)
-        console.error(`[Canvas Debug] Drawing IGW ${igw.name} at (${igw.metadata.x}, ${igw.metadata.y})`);
         drawNode(ctx, igw.metadata.x, igw.metadata.y, igw);
       });
 
@@ -893,39 +886,73 @@ const AI_SPM: React.FC = () => {
         const subnetTitle = `${subnet.name}\n${(subnet as SubnetNode).metadata.cidr_block || 'No CIDR'}`;
         drawFrame(ctx, subnetX, subnetY, subnetFrameWidth, subnetFrameHeight, subnetTitle, theme.palette.info.main);
 
-        // Draw EC2 instances in this subnet
+        // Draw EC2 instances in the subnet
         const ec2Instances = graphData.nodes.filter(isEC2Node).filter(instance => {
           const subnetMetadata = (subnet as SubnetNode).metadata;
           const subnetId = subnetMetadata.subnet_id;
           const instanceSubnetId = instance.metadata.subnet_id;
-          console.error(`[Canvas Debug] Comparing subnet ${subnet.name}:`, {
+          console.error('[Canvas Debug] Comparing subnet', subnet.name, ':', {
             subnetId,
             instanceSubnetId,
-            matches: subnetId === instanceSubnetId,
-            subnetMetadata
+            matches: subnetId === instanceSubnetId
           });
           return subnetId === instanceSubnetId;
         });
-        console.error(`[Canvas Debug] Found ${ec2Instances.length} EC2 instances for subnet ${subnet.name}`, {
+
+        console.error('[Canvas Debug] Found', ec2Instances.length, 'EC2 instances for subnet', subnet.name, {
           subnetId: (subnet as SubnetNode).metadata.subnet_id,
-          matchingInstances: ec2Instances.map(i => ({
-            name: i.name,
-            instanceSubnetId: i.metadata.subnet_id,
-            subnetId: (subnet as SubnetNode).metadata.subnet_id
-          }))
+          matchingInstances: ec2Instances.map(i => i.name)
         });
 
-        // Calculate the total width needed for all EC2 instances
-        const totalEC2Width = ec2Instances.length * 40; // 40 is the width per instance
-        const startX = subnetX + (subnetFrameWidth - totalEC2Width) / 2; // Center the group of instances
-
-        // Draw EC2 instances
-        ec2Instances.forEach((instance, instanceIndex) => {
-          instance.metadata.x = startX + (instanceIndex * 40);
-          instance.metadata.y = subnetY + 70;
-          console.error(`[Canvas Debug] Drawing EC2 ${instance.name} at (${instance.metadata.x}, ${instance.metadata.y})`);
-          drawNode(ctx, instance.metadata.x, instance.metadata.y, instance);
-        });
+        if (ec2Instances.length > 0) {
+          const instanceWidth = 40;  // Width of each EC2 instance
+          const instanceHeight = 70;  // Height of each EC2 instance
+          const padding = 20;         // Padding between instances
+          const framePadding = 20;    // Padding from frame edges
+          
+          // Calculate how many instances can fit in a row based on subnet width
+          const availableWidth = subnetFrameWidth - (2 * framePadding);
+          const maxInstancesPerRow = Math.max(1, Math.floor(availableWidth / (instanceWidth + padding)));
+          
+          // Calculate number of rows needed
+          const numRows = Math.ceil(ec2Instances.length / maxInstancesPerRow);
+          
+          // Calculate total height needed for all rows
+          const totalHeight = (numRows * instanceHeight) + ((numRows - 1) * padding);
+          
+          // Calculate starting Y position to center vertically
+          const startY = subnetY + framePadding + 50;//Math.max(0, (subnetFrameHeight - totalHeight) / 2);
+          
+          // Calculate starting X position to center horizontally
+          const rowWidth = Math.min(ec2Instances.length, maxInstancesPerRow) * (instanceWidth + padding) - padding;
+          const startX = subnetX + framePadding + Math.max(0, (subnetFrameWidth - rowWidth) / 2);
+          
+          console.error('[Canvas Debug] Drawing EC2 instances in subnet', subnet.name, {
+            startX,
+            startY,
+            rowWidth,
+            numRows,
+            maxInstancesPerRow,
+            totalHeight,
+            subnetFrameWidth,
+            subnetFrameHeight
+          });
+          
+          // Draw instances in a grid layout
+          ec2Instances.forEach((instance, index) => {
+            const row = Math.floor(index / maxInstancesPerRow);
+            const col = index % maxInstancesPerRow;
+            
+            const x = startX + (col * (instanceWidth + padding));
+            const y = startY + (row * (instanceHeight + padding));
+            
+            instance.metadata.x = x;
+            instance.metadata.y = y;
+            
+            console.debug(`Drawing EC2 ${instance.name} at (${x}, ${y})`);
+            drawNode(ctx, x, y, instance);
+          });
+        }
       });
     });
 
