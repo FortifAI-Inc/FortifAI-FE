@@ -22,64 +22,91 @@ import {
   IAMUserIcon
 } from 'react-aws-icons';
 import ReactDOM from 'react-dom';
+import { api, AssetData, GraphData, Link, NodeType } from '../services/api';
+import ForceGraph3D from 'react-force-graph-3d';
+import * as THREE from 'three';
 
-const BackEndUrl = 'http://13.53.201.102:3001';
+interface Tag {
+  Key: string;
+  Value: string;
+}
 
 interface BaseMetadata {
-  X?: number;
-  Y?: number;
-  Width?: number;
-  Height?: number;
-  assetType: string;
-  tags?: { Key: string; Value: string }[];
-  IsSandbox?: boolean;
+  asset_type: string;
+  vpc_id?: string;
+  is_ai?: boolean;
+  ai_detection_details?: string;
+  is_ignored?: boolean;
+  is_sandbox?: boolean;
+  tags?: Tag[];
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
+
+interface VpcMetadata extends BaseMetadata {
+  vpc_id: string;
+}
+
+interface Ec2Metadata extends BaseMetadata {
+  instance_id: string;
+  instance_type: string;
+  state: string;
+  private_ip_address: string;
+  public_ip_address?: string;
+  launch_time: string;
+  network_interfaces: string[];
+  architecture: string;
+  platform_details: string;
+  vpc_id: string;
+  subnet_id: string;
+}
+
+interface SubnetMetadata extends BaseMetadata {
+  subnet_id: string;
+  cidr_block: string;
+  availability_zone: string;
+  vpc_id: string;
+}
+
+interface S3Metadata extends BaseMetadata {
+  bucket_name: string;
+  creation_date: string;
+}
+
+interface IAMMetadata extends BaseMetadata {
+  role_id?: string;
+  role_name?: string;
+  assume_role_policy_document?: string;
+  policy_id?: string;
+  policy_name?: string;
+  attachment_count?: number;
+  permissions_boundary_usage_count?: number;
+  document?: string;
+  user_id?: string;
+  user_name?: string;
+  access_key_ids?: string[];
+  attached_policy_names?: string[];
+  inline_policy_names?: string[];
+}
+
+interface AssetWithMetadata extends AssetData {
+  metadata: BaseMetadata | VpcMetadata | Ec2Metadata | SubnetMetadata | S3Metadata | IAMMetadata;
 }
 
 interface Node {
   id: string;
   name: string;
-  type: 'VPC' | 'Subnet' | 'EC2' | 'S3' | 'IAMRole' | 'IAMPolicy' | 'IAMUser' | 'NI' | 'SG' | 'IGW';
+  type: NodeType;
   group: string;
   val: number;
   metadata: BaseMetadata;
 }
 
-interface VPCMetadata extends BaseMetadata {
-  VpcId: string;
-  cidrBlock: string;
-  IsSandbox?: boolean;
-}
-
-interface SubnetMetadata extends BaseMetadata {
-  subnetId: string;
-  VpcId: string;
-  cidrBlock: string;
-  availabilityZone: string;
-}
-
-interface NetworkInterfaceMetadata extends BaseMetadata {
-  networkInterfaceId: string;
-  availabilityZone: string;
-  description?: string;
-  attachmentId?: string;
-  instanceId?: string;
-  privateIpAddress: string;
-  publicIp?: string;
-  groupId?: string;
-  interfaceType?: string;
-  macAddress?: string;
-  ownerId?: string;
-  requesterId?: string;
-  requesterManaged?: boolean;
-  sourceDestCheck?: boolean;
-  status?: string;
-  VpcId: string;
-  subnetId: string;
-}
-
 interface VPCNode extends Node {
   type: 'VPC';
-  metadata: VPCMetadata;
+  metadata: VpcMetadata;
 }
 
 interface SubnetNode extends Node {
@@ -89,105 +116,54 @@ interface SubnetNode extends Node {
 
 interface NetworkInterfaceNode extends Node {
   type: 'NI';
-  metadata: NetworkInterfaceMetadata;
-}
-
-interface GraphData {
-  nodes: Node[];
-  links: { source: Node; target: Node; value: number }[];
-  metadata: {
-    totalNodes: number;
-    totalLinks: number;
-    assetTypes: string[];
-    vpcCount: number;
-    lastUpdate: string;
-    frameTypes: string[];
-  };
+  metadata: BaseMetadata;
 }
 
 interface IGWNode extends Node {
   type: 'IGW';
   metadata: BaseMetadata & {
-    internetGatewayId: string;
-    VpcId: string;
+    internet_gateway_id: string;
+    vpc_id: string;
   };
 }
 
 interface EC2Node extends Node {
   type: 'EC2';
-  metadata: BaseMetadata & {
-    instanceId: string;
-    instanceType: string;
-    state: string;
-    privateIpAddress: string;
-    publicIpAddress?: string;
-    launchTime: string;
-    networkInterfaces: string[];
-    architecture: string;
-    platformDetails: string;
-    VpcId: string;
-    subnetId: string;
-    IsAI?: boolean;
-    AIDetectionDetails?: string;
-    IsIgnored?: boolean;
-  };
+  metadata: Ec2Metadata;
 }
 
 interface S3Node extends Node {
   type: 'S3';
-  metadata: BaseMetadata & {
-    bucketName: string;
-    creationDate: string;
-  };
+  metadata: S3Metadata;
 }
 
 interface SGNode extends Node {
   type: 'SG';
   metadata: BaseMetadata & {
-    groupId: string;
-    VpcId: string;
+    group_id: string;
+    vpc_id: string;
     description?: string;
   };
 }
 
 interface IAMRoleNode extends Node {
   type: 'IAMRole';
-  metadata: BaseMetadata & {
-    roleId: string;
-    roleName: string;
-    assumeRolePolicyDocument: string;
-  };
+  metadata: IAMMetadata;
 }
 
 interface IAMPolicyNode extends Node {
   type: 'IAMPolicy';
-  metadata: BaseMetadata & {
-    policyId: string;
-    policyName: string;
-    attachmentCount: number;
-    permissionsBoundaryUsageCount: number;
-    document: string;
-  };
+  metadata: IAMMetadata;
 }
 
 interface IAMUserNode extends Node {
   type: 'IAMUser';
-  metadata: BaseMetadata & {
-    userId: string;
-    userName: string;
-    accessKeyIds: string[];
-    attachedPolicyNames: string[];
-    inlinePolicyNames: string[];
-  };
+  metadata: IAMMetadata;
 }
 
-const sandPatternImage = new Image();
-sandPatternImage.src = '/images/sand-texture.jpeg';
-
-// Add global state for sandbox VPC
-let sandboxVpcId: string | null = null;
-
 const AI_SPM: React.FC = () => {
+  const [sandboxVpcId, setSandboxVpcId] = useState<string | null>(null);
+  const [sandPatternImage, setSandPatternImage] = useState<HTMLImageElement | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,50 +187,50 @@ const AI_SPM: React.FC = () => {
     details: ''
   });
 
+  const graphRef = useRef<HTMLDivElement>(null);
+  const graph = useRef<typeof ForceGraph3D | null>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.src = '/images/sand-texture.jpeg';
+    setSandPatternImage(img);
+
+    return () => {
+      img.src = '';
+    };
+  }, []); // Empty dependency array means this runs once on mount
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log('Fetching data from:', `${BackEndUrl}/api/graph`);
-        const response = await fetch(`${BackEndUrl}/api/graph`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        console.log('Received data:', {
-          totalNodes: data.nodes?.length,
-          nodeTypes: data.nodes?.map((n: Node) => n.type),
-          vpcNodes: data.nodes?.filter((n: Node) => n.type === 'VPC').map((n: Node) => ({
-            name: n.name,
-            type: n.type,
-            metadata: n.metadata
-          })),
-          igwNodes: data.nodes?.filter((n: Node) => n.type === 'IGW').map((n: Node) => ({
-            name: n.name,
-            type: n.type,
-            metadata: n.metadata
-          }))
-        });
+        setLoading(true);
+        const data = await api.getGraphData();
         setGraphData(data);
+        setError(null);
       } catch (err) {
-        console.error('Error fetching graph data:', err);
-        setError(err instanceof Error ? err.message : 'An error occurred while fetching data');
+        setError('Failed to fetch graph data');
+        console.error('Error fetching data:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    // Initial fetch
     fetchData();
-
-    // Set up polling interval
-    const interval = setInterval(() => {
-      console.log('Polling for fresh data...');
-      fetchData();
-    }, 10000); // Poll every 10 seconds
-
-    // Clean up interval on unmount
-    return () => clearInterval(interval);
   }, []);
+
+  const handleRefresh = async () => {
+    try {
+      setLoading(true);
+      const data = await api.refreshGraphData();
+      setGraphData(data);
+      setError(null);
+    } catch (err) {
+      setError('Failed to refresh graph data');
+      console.error('Error refreshing data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Add resize handler
   useEffect(() => {
@@ -296,7 +272,7 @@ const AI_SPM: React.FC = () => {
 
     const renderMetadataList = () => {
       const entries = Object.entries(selectedNode.metadata)
-        .filter(([key, value]) => value !== undefined && key !== 'assetType' && key !== 'type' /*&& key !== 'tags'*/);
+        .filter(([key, value]) => value !== undefined && key !== 'asset_type' && key !== 'type' /*&& key !== 'tags'*/);
 
       return (
         <List dense>
@@ -352,7 +328,7 @@ const AI_SPM: React.FC = () => {
             Group: {selectedNode.group}
           </Typography>
           <Typography variant="body2" component="div">
-            <div>Asset Type: {selectedNode.metadata.assetType}</div>
+            <div>Asset Type: {selectedNode.metadata.asset_type}</div>
           </Typography>
           <Divider sx={{ my: 2 }} />
           {renderMetadataList()}
@@ -367,17 +343,17 @@ const AI_SPM: React.FC = () => {
   const renderVPCSection = (vpc: Node) => {
     const subnets = graphData?.nodes.filter(node =>
       node.type === 'Subnet' &&
-      (node as SubnetNode).metadata.VpcId === (vpc as VPCNode).metadata.VpcId
+      (node as SubnetNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
     ) || [];
 
     const ec2Instances = graphData?.nodes.filter(node =>
       node.type === 'EC2' &&
-      (node as EC2Node).metadata.VpcId === (vpc as VPCNode).metadata.VpcId
+      (node as EC2Node).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
     ) || [];
 
     const securityGroups = graphData?.nodes.filter(node =>
       node.type === 'SG' &&
-      (node as SGNode).metadata.VpcId === (vpc as VPCNode).metadata.VpcId
+      (node as SGNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
     ) || [];
 
     return (
@@ -386,9 +362,9 @@ const AI_SPM: React.FC = () => {
           <Box display="flex" alignItems="center" mb={2}>
             <AccountTreeIcon sx={{ mr: 1, color: theme.palette.primary.main }} />
             <Typography variant="h6">{vpc.name}</Typography>
-            {'cidrBlock' in vpc.metadata && (
+            {'cidr_block' in vpc.metadata && (
               <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                ({String(vpc.metadata.cidrBlock)})
+                ({String(vpc.metadata.cidr_block)})
               </Typography>
             )}
             <Tooltip title="View Details">
@@ -411,9 +387,9 @@ const AI_SPM: React.FC = () => {
                       <CardContent>
                         <Box display="flex" alignItems="center">
                           <Typography variant="body1">{subnet.name}</Typography>
-                          {'availabilityZone' in subnet.metadata && (
+                          {'availability_zone' in subnet.metadata && (
                             <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                              ({String(subnet.metadata.availabilityZone)})
+                              ({String(subnet.metadata.availability_zone)})
                             </Typography>
                           )}
                           <Tooltip title="View Details">
@@ -442,9 +418,9 @@ const AI_SPM: React.FC = () => {
                         <Box display="flex" alignItems="center">
                           <ComputerIcon sx={{ mr: 1 }} />
                           <Typography variant="body1">{instance.name}</Typography>
-                          {'instanceType' in instance.metadata && (
+                          {'instance_type' in instance.metadata && (
                             <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                              ({String(instance.metadata.instanceType)})
+                              ({String(instance.metadata.instance_type)})
                             </Typography>
                           )}
                           <Tooltip title="View Details">
@@ -491,21 +467,22 @@ const AI_SPM: React.FC = () => {
     );
   };
 
+  const drawSandboxBackground = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) => {
+    if (!sandPatternImage) return;
+
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(x, y, width, height);
+
+    // Draw sand pattern
+    ctx.globalAlpha = 0.1;
+    ctx.drawImage(sandPatternImage, x, y, width, height);
+    ctx.globalAlpha = 1.0;
+  };
+
   const drawFrame = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, title: string, color: string) => {
     // If this is a sandbox VPC, draw sandy background first
     if (title.includes('Sandbox')) {
-      // Draw a light sand color as fallback
-      ctx.fillStyle = '#F5DEB3';
-      ctx.fillRect(x, y, width, height);
-      
-      // Draw sandy pattern if image is loaded
-      if (sandPatternImage.complete) {
-        const pattern = ctx.createPattern(sandPatternImage, 'repeat');
-        if (pattern) {
-          ctx.fillStyle = pattern;
-          ctx.fillRect(x, y, width, height);
-        }
-      }
+      drawSandboxBackground(ctx, x, y, width, height);
     }
 
     // Draw frame border
@@ -602,7 +579,7 @@ const AI_SPM: React.FC = () => {
         ctx.fillStyle = '#666';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`VPC: ${metadata.VpcId}`, x, y + 40);
+        ctx.fillText(`VPC: ${metadata.vpc_id}`, x, y + 40);
         break;
       }
       case 'Subnet': {
@@ -610,7 +587,7 @@ const AI_SPM: React.FC = () => {
         ctx.fillStyle = '#666';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`VPC: ${metadata.VpcId}`, x, y + 40);
+        ctx.fillText(`VPC: ${metadata.vpc_id}`, x, y + 40);
         break;
       }
       case 'NI': {
@@ -623,8 +600,8 @@ const AI_SPM: React.FC = () => {
     ctx.font = '10px Arial';
     switch (node.type) {
       case 'EC2':
-        if ('instanceType' in node.metadata && 'state' in node.metadata) {
-          const instanceType = String(node.metadata.instanceType || '');
+        if ('instance_type' in node.metadata && 'state' in node.metadata) {
+          const instanceType = String(node.metadata.instance_type || '');
           const state = String(node.metadata.state || '');
           const displayType = state.toLowerCase() !== 'running' ? `${instanceType} (off)` : instanceType;
           ctx.fillText(displayType, x, y + size + 30);
@@ -634,12 +611,12 @@ const AI_SPM: React.FC = () => {
           ctx.fillText(String(node.metadata.state || ''), x, y + size + 45);
           console.log(`Drawing EC2 state: ${node.metadata.state}`);
         }
-        if ('IsAI' in node.metadata && node.metadata.IsAI) {
+        if ('is_ai' in node.metadata && node.metadata.is_ai) {
           // Draw flashing border around icon
           const currentTime = Date.now();
           const alpha = Math.abs(Math.sin(currentTime / 500)); // Flash every 500ms
           // Use green for sandbox VPC instances, red for others
-          const borderColor = (node as EC2Node).metadata.VpcId === sandboxVpcId 
+          const borderColor = (node as EC2Node).metadata.vpc_id === sandboxVpcId
             ? `rgba(0, 255, 0, ${alpha})`  // Green for sandbox
             : `rgba(255, 0, 0, ${alpha})`; // Red for others
           ctx.strokeStyle = borderColor;
@@ -659,35 +636,35 @@ const AI_SPM: React.FC = () => {
         }
         break;
       case 'VPC':
-        if ('cidrBlock' in node.metadata) {
-          ctx.fillText(String(node.metadata.cidrBlock || ''), x, y + size + 30);
-          console.log(`Drawing VPC CIDR block: ${node.metadata.cidrBlock}`);
+        if ('cidr_block' in node.metadata) {
+          ctx.fillText(String(node.metadata.cidr_block || ''), x, y + size + 30);
+          console.log(`Drawing VPC CIDR block: ${node.metadata.cidr_block}`);
         }
         break;
       case 'Subnet':
-        if ('availabilityZone' in node.metadata) {
-          ctx.fillText(String(node.metadata.availabilityZone || ''), x, y + size + 30);
-          console.log(`Drawing Subnet AZ: ${node.metadata.availabilityZone}`);
+        if ('availability_zone' in node.metadata) {
+          ctx.fillText(String(node.metadata.availability_zone || ''), x, y + size + 30);
+          console.log(`Drawing Subnet AZ: ${node.metadata.availability_zone}`);
         }
         break;
       case 'S3':
-        if ('creationDate' in node.metadata) {
-          const date = new Date(String(node.metadata.creationDate || '')).toLocaleDateString();
+        if ('creation_date' in node.metadata) {
+          const date = new Date(String(node.metadata.creation_date || '')).toLocaleDateString();
           ctx.fillText('Created: ' + date, x, y + size + 30);
           console.log(`Drawing S3 creation date: ${date}`);
         }
         break;
       case 'SG':
-        if ('groupId' in node.metadata) {
-          ctx.fillText(String(node.metadata.groupId || ''), x, y + size + 30);
-          console.log(`Drawing SG ID: ${node.metadata.groupId}`);
+        if ('group_id' in node.metadata) {
+          ctx.fillText(String(node.metadata.group_id || ''), x, y + size + 30);
+          console.log(`Drawing SG ID: ${node.metadata.group_id}`);
         }
         break;
       case 'IGW':
-        if ('internetGatewayId' in node.metadata) {
+        if ('internet_gateway_id' in node.metadata) {
           ctx.fillStyle = '#000000';
-          ctx.fillText(String(node.metadata.internetGatewayId || ''), x, y + size - 10);
-          console.log(`Drawing IGW ID: ${node.metadata.internetGatewayId}`);
+          ctx.fillText(String(node.metadata.internet_gateway_id || ''), x, y + size - 10);
+          console.log(`Drawing IGW ID: ${node.metadata.internet_gateway_id}`);
         }
         break;
     }
@@ -810,57 +787,55 @@ const AI_SPM: React.FC = () => {
       let nameTag = "";
 
       if (vpc.metadata.tags) {
-        if (typeof vpc.metadata.tags === 'object' && vpc.metadata.tags !== null) {
-          if (Object.entries(vpc.metadata.tags)[0][1] == "Name") {
-            nameTag = Object.entries(vpc.metadata.tags)[1][1];
-          }
-          if (nameTag) {
-            if (nameTag === "Sandbox") {
-              // Mark this special vpc as Sandbox
-              vpc.metadata.IsSandbox = true;
-              sandboxVpcId = vpc.metadata.VpcId;
+        const nameTag = vpc.metadata.tags.find(tag => tag.Key === 'Name');
+        if (nameTag) {
+          const nameTagValue = nameTag.Value;
+          if (nameTagValue === 'Sandbox') {
+            vpc.metadata.is_sandbox = true;
+            if (vpc.metadata.vpc_id) {
+              setSandboxVpcId(vpc.metadata.vpc_id);
             }
           }
         }
       }
-    
-      vpc.metadata.Width = (mainFrameWidth - 2 * fixedSectionSpacing - (vpcs.length - 1) * 20) / vpcs.length;
-      vpc.metadata.Height = mainFrameHeight - fixedSectionHeight - fixedSectionSpacing - 60;
-      vpc.metadata.X = vpcX;
-      vpc.metadata.Y = vpcY;
+
+      vpc.metadata.width = (mainFrameWidth - 2 * fixedSectionSpacing - (vpcs.length - 1) * 20) / vpcs.length;
+      vpc.metadata.height = mainFrameHeight - fixedSectionHeight - fixedSectionSpacing - 60;
+      vpc.metadata.x = vpcX;
+      vpc.metadata.y = vpcY;
 
       // Check if this VPC has any AI instances
-      const hasAIInstance = graphData.nodes.some(node => 
-        node.type === 'EC2' && 
-        'IsAI' in node.metadata && 
-        node.metadata.IsAI && 
-        (node as EC2Node).metadata.VpcId === vpc.metadata.VpcId
+      const hasAIInstance = graphData.nodes.some(node =>
+        node.type === 'EC2' &&
+        'is_ai' in node.metadata &&
+        node.metadata.is_ai &&
+        (node as EC2Node).metadata.vpc_id === vpc.metadata.vpc_id
       );
-      console.error(`VPC ${vpc.name} has AI instances: ${hasAIInstance}`);
-      console.error(`VPC ${vpc.name} has sandbox: ${vpc.metadata.IsSandbox}`);
 
       // Use green color for sandbox VPC with AI instances, otherwise use warning color
-      const frameColor = vpc.metadata.IsSandbox && hasAIInstance 
-        ? theme.palette.success.main 
+      const frameColor = vpc.metadata.is_sandbox && hasAIInstance
+        ? theme.palette.success.main
         : theme.palette.warning.main;
 
       if (nameTag) {
-        drawFrame(ctx, vpcX, vpcY, vpc.metadata.Width, vpc.metadata.Height, nameTag+" - "+vpc.name, frameColor);
+        drawFrame(ctx, vpcX, vpcY, vpc.metadata.width, vpc.metadata.height, nameTag + " - " + vpc.name, frameColor);
       } else {
-        drawFrame(ctx, vpcX, vpcY, vpc.metadata.Width, vpc.metadata.Height, vpc.name, frameColor);
+        drawFrame(ctx, vpcX, vpcY, vpc.metadata.width, vpc.metadata.height, vpc.name, frameColor);
       }
 
       // Draw VPC contents
       const subnets = graphData.nodes.filter(isSubnetNode);
-      console.log(`Found ${subnets.length} subnets for VPC ${vpc.name}:`, subnets);
+      console.log(`Found ${subnets.length} total subnets, filtering for VPC ${vpc.name}:`, subnets);
 
-      // Calculate subnet frame dimensions TODO: incorrect
-      let numSubnets = 0;
-      subnets.forEach((subnet, subnetIndex) => {
-        if ((subnet as SubnetNode).metadata.VpcId === vpc.metadata.VpcId) {
-          numSubnets++;
-        }
+      // Filter subnets for this VPC only
+      const vpcSubnets = subnets.filter(subnet => {
+        const subnetVpcId = subnet.metadata.vpc_id;
+        const vpcId = vpc.metadata.vpc_id;
+        return subnetVpcId && vpcId && subnetVpcId === vpcId;
       });
+
+      // Calculate subnet frame dimensions
+      let numSubnets = vpcSubnets.length;
       // Calculate optimal layout for subnets
       const maxSubnetsPerRow = 3; // Maximum subnets we want in a single row
       const numRows = Math.ceil(numSubnets / maxSubnetsPerRow);
@@ -868,80 +843,76 @@ const AI_SPM: React.FC = () => {
 
       // Calculate subnet dimensions based on VPC frame size and number of subnets
       const totalPadding = 80; // Total padding to reserve (40px on each side)
-      const vpcWidth = vpc.metadata.Width;
-      const vpcHeight = vpc.metadata.Height;
+      const vpcWidth = vpc.metadata.width;
+      const vpcHeight = vpc.metadata.height;
 
       // Calculate subnet frame dimensions
       subnetFrameWidth = (vpcWidth - totalPadding - (numCols - 1) * 20) / numCols;
       const subnetFrameHeight = (vpcHeight - 100 - (numRows - 1) * 20) / numRows;
 
-      //subnetFrameWidth = (mainFrameWidth - 2 * fixedSectionSpacing - 100) / subnets.length; // 100 for padding
-      //const subnetFrameHeight = 200; // Height for subnet frame
-
       // Draw IGW for this VPC
-      const igws = graphData.nodes.filter(isIGWNode).filter(igw => {
-        return igw.metadata.VpcId === vpc.metadata.VpcId;
-      });
-      console.debug(`Found ${igws.length} IGWs for VPC ${vpc.name}`, {
-        vpcId: vpc.metadata.VpcId,
-        matchingIGWs: igws.map(i => ({
-          name: i.name,
-          vpcId: i.metadata.VpcId
-        }))
+      const igws = graphData.nodes.filter(isIGWNode);
+
+      const matchingIGWs = igws.filter(igw => {
+        const matches = igw.metadata.vpc_id === vpc.metadata.vpc_id;
+        return matches;
       });
 
-      igws.forEach((igw, igwIndex) => {
-        igw.metadata.X = vpcX + (vpc.metadata.Width || 0) / 2;
-        igw.metadata.Y = vpcY + 15; // Position in the middle of the header band (30px height)
-        console.debug(`Drawing IGW ${igw.name} at (${igw.metadata.X}, ${igw.metadata.Y})`);
-        drawNode(ctx, igw.metadata.X, igw.metadata.Y, igw);
+      matchingIGWs.forEach((igw, igwIndex) => {
+        igw.metadata.x = vpcX + (vpc.metadata.width || 0) / 2;
+        igw.metadata.y = vpcY + 15; // Position in the middle of the header band (30px height)
+        console.debug(`Drawing IGW ${igw.name} at (${igw.metadata.x}, ${igw.metadata.y})`);
+        drawNode(ctx, igw.metadata.x, igw.metadata.y, igw);
       });
-      let index = -1;
-      subnets.forEach((subnet, subnetIndex) => {
-        if ((subnet as SubnetNode).metadata.VpcId === vpc.metadata.VpcId) {
-          index++;
-          const subnetX = vpcX + totalPadding / 2 + (index * (subnetFrameWidth + 20));
-          const subnetY = vpcY + 50;
-          subnet.metadata.X = subnetX;
-          subnet.metadata.Y = subnetY;
-          subnet.metadata.Width = subnetFrameWidth;
-          subnet.metadata.Height = subnetFrameHeight;
-          // Draw subnet frame
-          const subnetTitle = `${subnet.name}\n${(subnet as SubnetNode).metadata.cidrBlock || 'No CIDR'}`;
-          drawFrame(ctx, subnetX, subnetY, subnetFrameWidth, subnetFrameHeight, subnetTitle, theme.palette.info.main);
 
-          // Draw EC2 instances in this subnet
-          const ec2Instances = graphData.nodes.filter(isEC2Node).filter(instance =>
-            instance.metadata.subnetId === (subnet as SubnetNode).metadata.subnetId
-          );
-          console.log(`Found ${ec2Instances.length} EC2 instances for subnet ${subnet.name}`, {
-            subnetId: (subnet as SubnetNode).metadata.subnetId,
-            matchingInstances: ec2Instances.map(i => ({
-              name: i.name,
-              subnetId: i.metadata.subnetId
-            }))
-          });
+      // Draw subnets for this VPC only
+      vpcSubnets.forEach((subnet, subnetIndex) => {
+        const row = Math.floor(subnetIndex / maxSubnetsPerRow);
+        const col = subnetIndex % maxSubnetsPerRow;
 
-          // Calculate the total width needed for all EC2 instances
-          const totalEC2Width = ec2Instances.length * 40; // 40 is the width per instance
-          const startX = subnetX + (subnetFrameWidth - totalEC2Width) / 2; // Center the group of instances
+        const subnetX = vpcX + totalPadding / 2 + (col * (subnetFrameWidth + 20));
+        const subnetY = vpcY + 50 + (row * (subnetFrameHeight + 20));
 
-          // Draw EC2 instances
-          ec2Instances.forEach((instance, instanceIndex) => {
-            instance.metadata.X = startX + (instanceIndex * 40);
-            instance.metadata.Y = subnetY + 70;
-            console.debug(`Drawing EC2 ${instance.name} at (${instance.metadata.X}, ${instance.metadata.Y})`);
-            drawNode(ctx, instance.metadata.X, instance.metadata.Y, instance);
-          });
-        }
+        subnet.metadata.x = subnetX;
+        subnet.metadata.y = subnetY;
+        subnet.metadata.width = subnetFrameWidth;
+        subnet.metadata.height = subnetFrameHeight;
+
+        // Draw subnet frame
+        const subnetTitle = `${subnet.name}\n${(subnet as SubnetNode).metadata.cidr_block || 'No CIDR'}`;
+        drawFrame(ctx, subnetX, subnetY, subnetFrameWidth, subnetFrameHeight, subnetTitle, theme.palette.info.main);
+
+        // Draw EC2 instances in this subnet
+        const ec2Instances = graphData.nodes.filter(isEC2Node).filter(instance =>
+          instance.metadata.subnet_id === (subnet as SubnetNode).metadata.subnet_id
+        );
+        console.log(`Found ${ec2Instances.length} EC2 instances for subnet ${subnet.name}`, {
+          subnetId: (subnet as SubnetNode).metadata.subnet_id,
+          matchingInstances: ec2Instances.map(i => ({
+            name: i.name,
+            subnetId: i.metadata.subnet_id
+          }))
+        });
+
+        // Calculate the total width needed for all EC2 instances
+        const totalEC2Width = ec2Instances.length * 40; // 40 is the width per instance
+        const startX = subnetX + (subnetFrameWidth - totalEC2Width) / 2; // Center the group of instances
+
+        // Draw EC2 instances
+        ec2Instances.forEach((instance, instanceIndex) => {
+          instance.metadata.x = startX + (instanceIndex * 40);
+          instance.metadata.y = subnetY + 70;
+          console.debug(`Drawing EC2 ${instance.name} at (${instance.metadata.x}, ${instance.metadata.y})`);
+          drawNode(ctx, instance.metadata.x, instance.metadata.y, instance);
+        });
       });
     });
 
     // Draw tooltip for hovered node if it's an AI instance
-    if (hoveredNode && hoveredNode.type === 'EC2' && 'IsAI' in hoveredNode.metadata && hoveredNode.metadata.IsAI) {
+    if (hoveredNode && hoveredNode.type === 'EC2' && 'is_ai' in hoveredNode.metadata && hoveredNode.metadata.is_ai) {
       const nodeX = getNodeX(hoveredNode);
       const nodeY = getNodeY(hoveredNode) + 600; // Position tooltip above node
-      const tooltipText = (hoveredNode as EC2Node).metadata.AIDetectionDetails || 'AI Instance';
+      const tooltipText = (hoveredNode as EC2Node).metadata.ai_detection_details || 'AI Instance';
       ctx.save(); // Save current drawing state
       ctx.globalCompositeOperation = 'source-over'; // Ensure tooltip draws on top
       drawTooltip(ctx, nodeX, nodeY, tooltipText);
@@ -984,32 +955,11 @@ const AI_SPM: React.FC = () => {
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
 
-    console.log('Mouse position:', {
-      clientX: event.clientX,
-      clientY: event.clientY,
-      canvasLeft: rect.left,
-      canvasTop: rect.top,
-      scaleX,
-      scaleY,
-      relativeX: x,
-      relativeY: y
-    });
-
     // Check if hover is on a node
     const hoveredNode = graphData.nodes.find(node => {
       const nodeX = getNodeX(node);
       const nodeY = getNodeY(node);
       const distance = Math.sqrt(Math.pow(x - nodeX, 2) + Math.pow(y - nodeY, 2));
-
-      console.log(`Checking hover for node ${node.name}:`, {
-        nodeX,
-        nodeY,
-        mouseX: x,
-        mouseY: y,
-        distance,
-        threshold: 40
-      });
-
       return distance < 40; // Node radius
     });
 
@@ -1019,12 +969,12 @@ const AI_SPM: React.FC = () => {
 
   const getNodeX = (node: Node): number => {
     if (!graphData) return 0;
-    return node.metadata.X || 0;
+    return node.metadata.x || 0;
   };
 
   const getNodeY = (node: Node): number => {
     if (!graphData) return 0;
-    return node.metadata.Y || 0;
+    return node.metadata.y || 0;
   };
 
   const getNodeIcon = (type: string) => {
@@ -1060,7 +1010,7 @@ const AI_SPM: React.FC = () => {
     }
   };
 
-  const isVPCNode = (node: Node): node is Node & { type: 'VPC'; metadata: { VpcId: string } } => {
+  const isVPCNode = (node: Node): node is Node & { type: 'VPC'; metadata: { vpc_id: string } } => {
     const isVPC = node.type === 'VPC';
     return isVPC;
   };
@@ -1076,7 +1026,7 @@ const AI_SPM: React.FC = () => {
   };
 
   const isEC2Node = (node: Node): node is EC2Node => {
-    return node.type === 'EC2' && 'subnetId' in node.metadata;
+    return node.type === 'EC2' && 'subnet_id' in node.metadata;
   };
 
   const isIGWNode = (node: Node): node is IGWNode => {
@@ -1085,9 +1035,9 @@ const AI_SPM: React.FC = () => {
       type: node.type,
       metadata: node.metadata,
       isIGW: node.type === 'IGW',
-      hasVpcId: 'VpcId' in node.metadata
+      hasVpcId: 'vpc_id' in node.metadata
     });*/
-    return node.type === 'IGW' && 'VpcId' in node.metadata;
+    return node.type === 'IGW' && 'vpc_id' in node.metadata;
   };
 
   const handleContextMenu = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1123,10 +1073,10 @@ const AI_SPM: React.FC = () => {
   const handleAIDetails = () => {
     if (!contextMenu?.node) return;
     const instance = contextMenu.node as EC2Node;
-    if (instance.metadata.AIDetectionDetails) {
+    if (instance.metadata.ai_detection_details) {
       setAiDetailsDialog({
         open: true,
-        details: instance.metadata.AIDetectionDetails
+        details: instance.metadata.ai_detection_details
       });
     }
     handleContextMenuClose();
@@ -1136,66 +1086,50 @@ const AI_SPM: React.FC = () => {
     setAiDetailsDialog({ open: false, details: '' });
   };
 
-  const handleIgnoreToggle = async () => {
-    if (!contextMenu?.node) return;
-    const instance = contextMenu.node as EC2Node;
+  const handleIgnoreToggle = async (node: Node) => {
+    if (!node) return;
+
     try {
-      const response = await fetch(`${BackEndUrl}/api/fortifai/ignore`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          instanceId: instance.metadata.instanceId,
-          ignore: !instance.metadata.IsIgnored 
-        }),
+      const updatedNode = {
+        ...node,
+        metadata: {
+          ...node.metadata,
+          is_ignored: !(node.metadata as BaseMetadata).is_ignored
+        }
+      };
+
+      // Update the asset in the backend
+      await api.updateAsset(node.id, {
+        metadata: updatedNode.metadata
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to toggle ignore status: ${response.status} ${response.statusText}`);
-      }
+      // Update the node in the graph
+      setGraphData(prevData => {
+        if (!prevData) return null;
+        return {
+          ...prevData,
+          nodes: prevData.nodes.map(n =>
+            n.id === node.id ? updatedNode : n
+          ),
+          links: prevData.links // Preserve existing links
+        };
+      });
 
-      // Update the instance's ignore status in the graph data
-      if (graphData) {
-        const updatedNodes = graphData.nodes.map(node => {
-          if (node.id === instance.id) {
-            return {
-              ...node,
-              metadata: {
-                ...node.metadata,
-                IsIgnored: !instance.metadata.IsIgnored
-              }
-            };
-          }
-          return node;
-        });
-        setGraphData({ ...graphData, nodes: updatedNodes });
-      }
-    } catch (err) {
-      console.error('Error toggling ignore status:', err);
+      // Show success message
+      alert(`Asset ${(updatedNode.metadata as BaseMetadata).is_ignored ? 'ignored' : 'unignored'} successfully`);
+    } catch (error) {
+      console.error('Error toggling ignore status:', error);
+      alert('Failed to update asset status');
     }
-    handleContextMenuClose();
   };
 
   const handleFortifAIAction = async () => {
     if (!contextMenu?.node) return;
 
-    const instanceId = (contextMenu.node as EC2Node).metadata.instanceId;
+    const instanceId = (contextMenu.node as EC2Node).metadata.instance_id;
     try {
-      const response = await fetch(`${BackEndUrl}/api/fortifai`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ instanceId }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to process FortifAI action: ${response.status} ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('FortifAI action result:', result);
+      const response = await api.fortifaiAction(instanceId);
+      console.log('FortifAI action result:', response);
     } catch (err) {
       console.error('Error processing FortifAI action:', err);
     } finally {
@@ -1203,9 +1137,75 @@ const AI_SPM: React.FC = () => {
     }
   };
 
+  // Update the useEffect that processes VPCs
+  useEffect(() => {
+    if (graphData) {
+      graphData.nodes.forEach(vpc => {
+        if (vpc.type === 'VPC') {
+          const nameTag = vpc.metadata.tags?.find(tag => tag.Key === 'Name');
+          if (nameTag) {
+            const nameTagValue = nameTag.Value;
+            if (nameTagValue === 'Sandbox') {
+              vpc.metadata.is_sandbox = true;
+              if (vpc.metadata.vpc_id) {
+                setSandboxVpcId(vpc.metadata.vpc_id);
+              }
+            }
+          }
+        }
+      });
+    }
+  }, [graphData]);
+
+  // Add this function to find the sandbox VPC
+  const findSandboxVPC = (nodes: AssetWithMetadata[]): AssetWithMetadata | undefined => {
+    return nodes.find(node =>
+      node.type === 'VPC' &&
+      node.metadata.tags?.some((tag: Tag) =>
+        tag.Key === 'Environment' && tag.Value === 'Sandbox'
+      )
+    );
+  };
+
+  // Update the useEffect for graph rendering
+  useEffect(() => {
+    if (!graphRef.current || !graphData) return;
+
+    // Find sandbox VPC
+    const sandboxVPC = findSandboxVPC(graphData.nodes);
+    if (sandboxVPC) {
+      // Create sandbox frame
+      const frame = document.createElement('div');
+      frame.style.position = 'absolute';
+      frame.style.border = '2px solid #ffd700';
+      frame.style.backgroundColor = 'rgba(255, 215, 0, 0.1)';
+      frame.style.pointerEvents = 'none';
+      frame.style.zIndex = '1';
+      graphRef.current.appendChild(frame);
+
+      // Update frame position when graph updates
+      const updateFramePosition = () => {
+        const node = graphRef.current?.querySelector(`[data-id="${sandboxVPC.id}"]`);
+        if (node) {
+          const rect = node.getBoundingClientRect();
+          const containerRect = graphRef.current!.getBoundingClientRect();
+
+          frame.style.left = `${rect.left - containerRect.left}px`;
+          frame.style.top = `${rect.top - containerRect.top}px`;
+          frame.style.width = `${rect.width}px`;
+          frame.style.height = `${rect.height}px`;
+        }
+      };
+
+      // Update frame position periodically
+      const interval = setInterval(updateFramePosition, 100);
+      return () => clearInterval(interval);
+    }
+  }, [graphData]);
+
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
         <CircularProgress />
       </Box>
     );
@@ -1279,8 +1279,14 @@ const AI_SPM: React.FC = () => {
           </ListItem>
           <ListItem>
             <ListItemText
-              primary="Total Connections"
-              secondary={graphData.metadata.totalLinks}
+              primary="Asset Types"
+              secondary={graphData.metadata.assetTypes.join(', ')}
+            />
+          </ListItem>
+          <ListItem>
+            <ListItemText
+              primary="VPC Count"
+              secondary={graphData.metadata.vpcCount}
             />
           </ListItem>
           <ListItem>
@@ -1345,11 +1351,11 @@ const AI_SPM: React.FC = () => {
             : undefined
         }
       >
-        {contextMenu?.node && 'IsAI' in contextMenu.node.metadata && (contextMenu.node as EC2Node).metadata.IsAI && (
+        {contextMenu?.node && 'is_ai' in contextMenu.node.metadata && (contextMenu.node as EC2Node).metadata.is_ai && (
           <MenuItem onClick={handleAIDetails}>AI Details</MenuItem>
         )}
-        <MenuItem onClick={handleIgnoreToggle}>
-          {contextMenu?.node && 'IsIgnored' in contextMenu.node.metadata && contextMenu.node.metadata.IsIgnored ? '✓ ' : ''}Ignore
+        <MenuItem onClick={() => contextMenu?.node && handleIgnoreToggle(contextMenu.node)}>
+          {contextMenu?.node && 'is_ignored' in contextMenu.node.metadata && contextMenu.node.metadata.is_ignored ? '✓ ' : ''}Ignore
         </MenuItem>
         <MenuItem onClick={handleFortifAIAction}>
           <Typography component="span" sx={{ fontWeight: 'bold', color: 'success.main' }}>

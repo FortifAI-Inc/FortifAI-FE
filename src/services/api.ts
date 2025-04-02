@@ -14,54 +14,52 @@ export interface AssetData {
   group: string;
   val: number;
   metadata: {
-    assetType: string;
+    asset_type: string;
     // EC2 fields
-    instanceId?: string;
-    instanceType?: string;
+    instance_id?: string;
+    instance_type?: string;
     state?: string;
-    privateIpAddress?: string;
-    publicIpAddress?: string;
-    launchTime?: string;
-    networkInterfaces?: string[];
+    private_ip_address?: string;
+    public_ip_address?: string;
+    launch_time?: string;
+    network_interfaces?: string[];
     architecture?: string;
-    platformDetails?: string;
+    platform_details?: string;
     // VPC fields
-    VpcId?: string;
     vpc_id?: string;
-    cidrBlock?: string;
-    uniqueId?: string;
+    cidr_block?: string;
+    unique_id?: string;
     // Subnet fields
-    subnetId?: string;
+    subnet_id?: string;
     // S3 fields
-    bucketName?: string;
-    creationDate?: string;
+    bucket_name?: string;
+    creation_date?: string;
     // IGW fields
-    internetGatewayId?: string;
+    internet_gateway_id?: string;
     // SG fields
-    groupId?: string;
+    group_id?: string;
     // NI fields
-    networkInterfaceId?: string;
-    availabilityZone?: string;
-    description?: string;
-    attachmentId?: string;
+    network_interface_id?: string;
+    availability_zone?: string;
+    attachment_id?: string;
     // IAM fields
-    roleId?: string;
-    roleName?: string;
-    assumeRolePolicyDocument?: string;
-    policyId?: string;
-    policyName?: string;
-    attachmentCount?: number;
-    permissionsBoundaryUsageCount?: number;
+    role_id?: string;
+    role_name?: string;
+    assume_role_policy_document?: string;
+    policy_id?: string;
+    policy_name?: string;
+    attachment_count?: number;
+    permissions_boundary_usage_count?: number;
     document?: string;
-    userId?: string;
-    userName?: string;
-    accessKeyIds?: string[];
-    attachedPolicyNames?: string[];
-    inlinePolicyNames?: string[];
-    IsAI?: boolean;
-    AIDetectionDetails?: string;
-    IsIgnored?: boolean;
-    IsSandbox?: boolean;
+    user_id?: string;
+    user_name?: string;
+    access_key_ids?: string[];
+    attached_policy_names?: string[];
+    inline_policy_names?: string[];
+    is_ai?: boolean;
+    ai_detection_details?: string;
+    is_ignored?: boolean;
+    is_sandbox?: boolean;
     tags?: { Key: string; Value: string }[];
   };
 }
@@ -180,7 +178,7 @@ class ApiService {
       's3': 'S3',
       'iam_role': 'IAMRole',
       'iam_policy': 'IAMPolicy',
-      'iam_user': 'IAMUser',
+      'user': 'IAMUser',
       'igw': 'IGW'
     };
     return typeMapping[assetType] || assetType.toUpperCase() as NodeType;
@@ -195,7 +193,7 @@ class ApiService {
       's3': 'Storage',
       'iam_role': 'Administrative',
       'iam_policy': 'Administrative',
-      'iam_user': 'Administrative',
+      'user': 'Administrative',
       'igw': 'Networking'
     };
     return groupMapping[assetType] || 'Other';
@@ -209,81 +207,75 @@ class ApiService {
 
   async getGraphData(): Promise<GraphData> {
     try {
-      console.error('[API] Starting to fetch graph data...');
-      
       // Fetch all asset types
-      const assetTypes = ['vpc', 'subnet', 'ec2', 'sg', 's3', 'iam_role', 'iam_policy', 'iam_user', 'igw'];
+      const assetTypes = ['vpc', 'subnet', 'ec2', 'sg', 's3', 'iam_role', 'iam_policy', 'user', 'igw'];
       const assets: AssetData[] = [];
       
       for (const assetType of assetTypes) {
-        console.error(`[API] Fetching ${assetType} assets...`);
         const data = await this.fetchAssets(assetType);
-        console.error(`[API] Raw ${assetType} data from backend:`, JSON.stringify(data, null, 2));
         
         // Process each asset
         data.forEach(asset => {
-          if (assetType === 'igw') {
-            console.error('[API] Processing IGW asset:', {
-              assetId: asset.id,
-              assetName: asset.name,
-              rawMetadata: asset.metadata,
-              vpcId: asset.metadata?.vpc_id,
-              VpcId: asset.metadata?.VpcId
-            });
-          }
-          
           const processedAsset: AssetData = {
             ...asset,
             metadata: {
               ...asset.metadata,
-              assetType: assetType,
-              VpcId: assetType === 'vpc' 
-                ? asset.metadata?.uniqueId  // For VPCs, use uniqueId as VpcId
+              asset_type: assetType,
+              // Normalize VPC ID to underscore case
+              vpc_id: assetType === 'vpc' 
+                ? asset.metadata?.unique_id || asset.metadata?.vpc_id  // For VPCs, use unique_id or vpc_id
                 : assetType === 'igw'
-                  ? asset.metadata?.VpcId || asset.metadata?.vpc_id  // For IGWs, use VpcId or vpc_id
-                  : asset.metadata?.VpcId,    // For other assets, use VpcId
-              uniqueId: asset.metadata?.uniqueId
+                  ? asset.metadata?.vpc_id || asset.metadata?.vpc_id  // For IGWs, use vpc_id or VpcId
+                  : asset.metadata?.vpc_id,    // For other assets, use vpc_id
+              unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
+              // Normalize other fields to underscore case
+              instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
+              instance_type: asset.metadata?.instance_type || asset.metadata?.instance_type,
+              private_ip_address: asset.metadata?.private_ip_address || asset.metadata?.private_ip_address,
+              public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
+              launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
+              network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
+              subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
+              bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
+              creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
+              internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
+              group_id: asset.metadata?.group_id || asset.metadata?.group_id,
+              network_interface_id: asset.metadata?.network_interface_id || asset.metadata?.network_interface_id,
+              availability_zone: asset.metadata?.availability_zone || asset.metadata?.availability_zone,
+              attachment_id: asset.metadata?.attachment_id || asset.metadata?.attachment_id,
+              role_id: asset.metadata?.role_id || asset.metadata?.role_id,
+              role_name: asset.metadata?.role_name || asset.metadata?.role_name,
+              assume_role_policy_document: asset.metadata?.assume_role_policy_document || asset.metadata?.assume_role_policy_document,
+              policy_id: asset.metadata?.policy_id || asset.metadata?.policy_id,
+              policy_name: asset.metadata?.policy_name || asset.metadata?.policy_name,
+              attachment_count: asset.metadata?.attachment_count || asset.metadata?.attachment_count,
+              permissions_boundary_usage_count: asset.metadata?.permissions_boundary_usage_count || asset.metadata?.permissions_boundary_usage_count,
+              user_id: asset.metadata?.user_id || asset.metadata?.user_id,
+              user_name: asset.metadata?.user_name || asset.metadata?.user_name,
+              access_key_ids: asset.metadata?.access_key_ids || asset.metadata?.access_key_ids,
+              attached_policy_names: asset.metadata?.attached_policy_names || asset.metadata?.attached_policy_names,
+              inline_policy_names: asset.metadata?.inline_policy_names || asset.metadata?.inline_policy_names,
+              is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
+              ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
+              is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
+              is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
+              tags: asset.metadata?.tags
             }
           };
-          
-          if (assetType === 'igw') {
-            console.error('[API] Processed IGW asset:', {
-              assetId: processedAsset.id,
-              assetName: processedAsset.name,
-              processedMetadata: processedAsset.metadata,
-              finalVpcId: processedAsset.metadata.VpcId
-            });
-          }
           
           assets.push(processedAsset);
         });
       }
       
-      // Log final asset distribution
-      const assetDistribution = assets.reduce((acc, asset) => {
-        acc[asset.metadata.assetType] = (acc[asset.metadata.assetType] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-      
-      console.error('[API] Final asset distribution:', assetDistribution);
-      
       // Create nodes and links
       const nodes = assets.map(asset => ({
         id: asset.id,
         name: asset.name,
-        type: this.getNodeType(asset.metadata.assetType),
-        group: this.getAssetGroup(asset.metadata.assetType),
+        type: this.getNodeType(asset.metadata.asset_type),
+        group: this.getAssetGroup(asset.metadata.asset_type),
         val: 1,
         metadata: asset.metadata
       }));
-      
-      // Log IGW nodes specifically
-      const igwNodes = nodes.filter(node => node.type === 'IGW');
-      console.error('[API] IGW nodes:', igwNodes.map(node => ({
-        id: node.id,
-        name: node.name,
-        metadata: node.metadata
-      })));
       
       const links = this.createLinks(assets);
       
@@ -292,8 +284,11 @@ class ApiService {
         links,
         metadata: {
           totalNodes: nodes.length,
-          assetTypes: Object.keys(assetDistribution),
-          vpcCount: assetDistribution.vpc || 0,
+          assetTypes: Object.keys(assets.reduce((acc, asset) => {
+            acc[asset.metadata.asset_type] = (acc[asset.metadata.asset_type] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)),
+          vpcCount: assets.filter(asset => asset.metadata.asset_type === 'vpc').length,
           lastUpdate: new Date().toISOString()
         }
       };
