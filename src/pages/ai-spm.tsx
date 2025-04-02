@@ -68,6 +68,7 @@ interface SubnetMetadata extends BaseMetadata {
   cidr_block: string;
   availability_zone: string;
   vpc_id: string;
+  unique_id: string;
 }
 
 interface S3Metadata extends BaseMetadata {
@@ -770,20 +771,30 @@ const AI_SPM: React.FC = () => {
     iamResources.forEach((resource, index) => {
       const x = startX + (spacing * (index + 1));
       const y = mainFrameY + 80;
-      console.log(`Drawing IAM resource ${resource.name} at (${x}, ${y})`);
+      console.error(`[Canvas Debug] Drawing IAM resource ${resource.name} at (${x}, ${y})`);
       drawNode(ctx, x, y, resource);
     });
 
     // Draw VPCs
-    console.log('All nodes:', graphData.nodes);
+    console.error('[Canvas Debug] All nodes:', graphData.nodes);
     const vpcs = graphData.nodes.filter(isVPCNode);
-    console.log('Filtered VPCs:', vpcs);
-    console.log(`Found ${vpcs.length} VPCs to draw`);
+    console.error('[Canvas Debug] Filtered VPCs:', vpcs);
+    console.error(`[Canvas Debug] Found ${vpcs.length} VPCs to draw`);
+    
+    // Log EC2 instances
+    const ec2Instances = graphData.nodes.filter(isEC2Node);
+    console.error('[Canvas Debug] EC2 instances:', ec2Instances.map(instance => ({
+      id: instance.id,
+      name: instance.name,
+      vpcId: instance.metadata.vpc_id,
+      subnetId: instance.metadata.subnet_id
+    })));
+
     vpcs.forEach((vpc, vpcIndex) => {
       const vpcX = mainFrameX + fixedSectionSpacing + (vpcIndex * ((mainFrameWidth - 2 * fixedSectionSpacing) / vpcs.length));
       const vpcY = mainFrameY + 30 + fixedSectionHeight + fixedSectionSpacing;
 
-      console.debug(`Drawing VPC ${vpc.name} at (${vpcX}, ${vpcY})`);
+      console.error(`[Canvas Debug] Drawing VPC ${vpc.name} at (${vpcX}, ${vpcY})`);
       let nameTag = "";
 
       if (vpc.metadata.tags) {
@@ -825,7 +836,7 @@ const AI_SPM: React.FC = () => {
 
       // Draw VPC contents
       const subnets = graphData.nodes.filter(isSubnetNode);
-      console.log(`Found ${subnets.length} total subnets, filtering for VPC ${vpc.name}:`, subnets);
+      console.error(`[Canvas Debug] Found ${subnets.length} total subnets, filtering for VPC ${vpc.name}:`, subnets);
 
       // Filter subnets for this VPC only
       const vpcSubnets = subnets.filter(subnet => {
@@ -861,7 +872,7 @@ const AI_SPM: React.FC = () => {
       matchingIGWs.forEach((igw, igwIndex) => {
         igw.metadata.x = vpcX + (vpc.metadata.width || 0) / 2;
         igw.metadata.y = vpcY + 15; // Position in the middle of the header band (30px height)
-        console.debug(`Drawing IGW ${igw.name} at (${igw.metadata.x}, ${igw.metadata.y})`);
+        console.error(`[Canvas Debug] Drawing IGW ${igw.name} at (${igw.metadata.x}, ${igw.metadata.y})`);
         drawNode(ctx, igw.metadata.x, igw.metadata.y, igw);
       });
 
@@ -883,14 +894,24 @@ const AI_SPM: React.FC = () => {
         drawFrame(ctx, subnetX, subnetY, subnetFrameWidth, subnetFrameHeight, subnetTitle, theme.palette.info.main);
 
         // Draw EC2 instances in this subnet
-        const ec2Instances = graphData.nodes.filter(isEC2Node).filter(instance =>
-          instance.metadata.subnet_id === (subnet as SubnetNode).metadata.subnet_id
-        );
-        console.log(`Found ${ec2Instances.length} EC2 instances for subnet ${subnet.name}`, {
+        const ec2Instances = graphData.nodes.filter(isEC2Node).filter(instance => {
+          const subnetMetadata = (subnet as SubnetNode).metadata;
+          const subnetId = subnetMetadata.subnet_id;
+          const instanceSubnetId = instance.metadata.subnet_id;
+          console.error(`[Canvas Debug] Comparing subnet ${subnet.name}:`, {
+            subnetId,
+            instanceSubnetId,
+            matches: subnetId === instanceSubnetId,
+            subnetMetadata
+          });
+          return subnetId === instanceSubnetId;
+        });
+        console.error(`[Canvas Debug] Found ${ec2Instances.length} EC2 instances for subnet ${subnet.name}`, {
           subnetId: (subnet as SubnetNode).metadata.subnet_id,
           matchingInstances: ec2Instances.map(i => ({
             name: i.name,
-            subnetId: i.metadata.subnet_id
+            instanceSubnetId: i.metadata.subnet_id,
+            subnetId: (subnet as SubnetNode).metadata.subnet_id
           }))
         });
 
@@ -902,7 +923,7 @@ const AI_SPM: React.FC = () => {
         ec2Instances.forEach((instance, instanceIndex) => {
           instance.metadata.x = startX + (instanceIndex * 40);
           instance.metadata.y = subnetY + 70;
-          console.debug(`Drawing EC2 ${instance.name} at (${instance.metadata.x}, ${instance.metadata.y})`);
+          console.error(`[Canvas Debug] Drawing EC2 ${instance.name} at (${instance.metadata.x}, ${instance.metadata.y})`);
           drawNode(ctx, instance.metadata.x, instance.metadata.y, instance);
         });
       });

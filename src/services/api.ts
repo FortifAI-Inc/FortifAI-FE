@@ -212,10 +212,22 @@ class ApiService {
       const assets: AssetData[] = [];
       
       for (const assetType of assetTypes) {
+        console.error(`[API Debug] Fetching ${assetType} assets...`);
         const data = await this.fetchAssets(assetType);
+        console.error(`[API Debug] Raw ${assetType} data:`, data);
         
         // Process each asset
         data.forEach(asset => {
+          if (assetType === 'ec2') {
+            console.error('[API Debug] Processing EC2 asset:', {
+              id: asset.id,
+              name: asset.name,
+              metadata: asset.metadata,
+              vpcId: asset.metadata?.vpc_id,
+              subnetId: asset.metadata?.subnet_id
+            });
+          }
+          
           const processedAsset: AssetData = {
             ...asset,
             metadata: {
@@ -235,7 +247,10 @@ class ApiService {
               public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
               launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
               network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
-              subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
+              // For subnets, ensure subnet_id is set correctly
+              subnet_id: assetType === 'subnet' 
+                ? asset.metadata?.subnet_id || asset.metadata?.unique_id || asset.id  // For subnets, use subnet_id, unique_id, or id
+                : asset.metadata?.subnet_id,  // For other assets, use subnet_id as is
               bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
               creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
               internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
@@ -263,6 +278,16 @@ class ApiService {
             }
           };
           
+          if (assetType === 'ec2') {
+            console.error('[API Debug] Processed EC2 asset:', {
+              id: processedAsset.id,
+              name: processedAsset.name,
+              metadata: processedAsset.metadata,
+              vpcId: processedAsset.metadata.vpc_id,
+              subnetId: processedAsset.metadata.subnet_id
+            });
+          }
+          
           assets.push(processedAsset);
         });
       }
@@ -278,6 +303,15 @@ class ApiService {
       }));
       
       const links = this.createLinks(assets);
+      
+      // Log final asset distribution
+      console.error('[API Debug] Final asset distribution:', {
+        total: nodes.length,
+        byType: nodes.reduce((acc, node) => {
+          acc[node.type] = (acc[node.type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      });
       
       return {
         nodes,
