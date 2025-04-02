@@ -1,0 +1,51 @@
+.amplify-button {
+  background-color: #1976d2 !important;
+  color: white !important;
+  border: none !important;
+  padding: 8px 16px !important;
+  border-radius: 4px !important;
+  font-weight: 500 !important;
+}
+
+.amplify-button:hover {
+  background-color: #1565c0 !important;
+}
+
+.amplify-heading {
+  color: #1976d2 !important;
+}
+
+.amplify-input {
+  border-color: #1976d2 !important;
+}
+
+.amplify-input:focus {
+  border-color: #1565c0 !important;
+  box-shadow: 0 0 0 1px #1565c0 !important;
+}
+
+.amplify-tabs-item {
+  color: #1976d2 !important;
+}
+
+.amplify-tabs-item[data-state="active"] {
+  color: #1565c0 !important;
+  border-bottom-color: #1565c0 !important;
+}
+
+.amplify-card {
+  background-color: white !important;
+  border: 1px solid #e0e0e0 !important;
+}
+
+.amplify-field__label {
+  color: #1976d2 !important;
+}
+
+.amplify-field__input {
+  color: #000000 !important;
+}
+
+.amplify-field__input::placeholder {
+  color: #666666 !important;
+} 
