@@ -136,7 +136,7 @@ class ApiService {
       ...options,
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
+        ...(options.method && options.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
         ...options.headers,
       }
     });
@@ -364,6 +364,18 @@ class ApiService {
       });
     } catch (error) {
       console.error('Failed to process FortifAI action:', error);
+      throw error;
+    }
+  }
+
+  async post(endpoint: string, data?: any): Promise<any> {
+    try {
+      return await this.fetchWithAuth(endpoint, {
+        method: 'POST',
+        body: data ? JSON.stringify(data) : undefined,
+      });
+    } catch (error) {
+      console.error(`Failed to make POST request to ${endpoint}:`, error);
       throw error;
     }
   }

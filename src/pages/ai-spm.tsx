@@ -9,6 +9,7 @@ import ComputerIcon from '@mui/icons-material/Computer';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import PanToolIcon from '@mui/icons-material/PanTool';
+import SyncIcon from '@mui/icons-material/Sync';
 import {
   S3Icon,
   VPCIcon,
@@ -190,6 +191,9 @@ const AI_SPM: React.FC = () => {
 
   const graphRef = useRef<HTMLDivElement>(null);
   const graph = useRef<typeof ForceGraph3D | null>(null);
+
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     const img = new Image();
@@ -1251,6 +1255,21 @@ const AI_SPM: React.FC = () => {
     }
   }, [graphData]);
 
+  const handleSyncAssets = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncError(null);
+      await api.post('/assets-monitor/sync');
+      // Refresh the graph data after successful sync
+      await handleRefresh();
+    } catch (err) {
+      setSyncError('Failed to sync assets');
+      console.error('Error syncing assets:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -1349,9 +1368,39 @@ const AI_SPM: React.FC = () => {
       {/* Main Content */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ 
+          p: 2, 
+          pr: 6, // Increased from 4 to 6 (48px) to ensure 30px margin on the right
+          borderBottom: 1, 
+          borderColor: 'divider', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between' 
+        }}>
           <Typography variant="h5">Cloud Assets</Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<SyncIcon />}
+            onClick={handleSyncAssets}
+            disabled={isSyncing}
+            sx={{ 
+              ml: 4,
+              minWidth: '140px' // Ensure consistent button width
+            }}
+          >
+            {isSyncing ? 'Syncing...' : 'Sync Assets'}
+          </Button>
         </Box>
+
+        {/* Show sync error if any */}
+        {syncError && (
+          <Box sx={{ p: 2 }}>
+            <Alert severity="error" onClose={() => setSyncError(null)}>
+              {syncError}
+            </Alert>
+          </Box>
+        )}
 
         {/* Canvas Container */}
         <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden', p: 2 }}>
