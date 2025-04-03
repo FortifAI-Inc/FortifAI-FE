@@ -754,7 +754,7 @@ const AI_SPM: React.FC = () => {
     drawFrame(ctx, mainFrameX + fixedSectionSpacing, mainFrameY + 30, fixedSectionWidth, fixedSectionHeight, 'Storage', theme.palette.info.main);
     const s3Buckets = graphData.nodes.filter(node => node.type === 'S3');
     s3Buckets.forEach((bucket, index) => {
-      drawNode(ctx, mainFrameX + fixedSectionSpacing + (fixedSectionWidth / 2) - ((s3Buckets.length - 1) * 30) + (index * 60), mainFrameY + 80, bucket);
+      drawNode(ctx, mainFrameX + fixedSectionSpacing + (fixedSectionWidth / 2) - ((s3Buckets.length - 1) * 60) + (index * 120), mainFrameY + 80, bucket);
     });
 
     // Draw administrative section
