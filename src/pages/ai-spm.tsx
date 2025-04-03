@@ -1260,8 +1260,6 @@ const AI_SPM: React.FC = () => {
       setIsSyncing(true);
       setSyncError(null);
       await api.post('/assets-monitor/sync');
-      // Refresh the graph data after successful sync
-      await handleRefresh();
     } catch (err) {
       setSyncError('Failed to sync assets');
       console.error('Error syncing assets:', err);
