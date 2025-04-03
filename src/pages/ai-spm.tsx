@@ -632,8 +632,9 @@ const AI_SPM: React.FC = () => {
           ctx.fillStyle = borderColor.replace('rgba', 'rgb').replace(/[^,]+\)$/, '1)');
           ctx.fillText('AI Instance', x, y + size + 60);
           console.log(`Drawing AI instance indicator for: ${node.name}`);
-        } else if ('state' in node.metadata && typeof node.metadata.state === 'string' && node.metadata.state.toLowerCase() !== 'running') {
-          // Draw gray border for non-running instances
+        }
+        // Draw gray border for non-running instances
+        if (node.type === 'EC2' && 'state' in node.metadata && (node.metadata as Ec2Metadata).state.toLowerCase() !== 'running') {
           ctx.strokeStyle = '#808080';
           ctx.lineWidth = 3;
           ctx.strokeRect(x - 24, y - 24, 48, 48);
