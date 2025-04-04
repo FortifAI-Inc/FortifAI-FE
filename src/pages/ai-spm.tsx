@@ -624,7 +624,10 @@ const AI_SPM: React.FC = () => {
           ctx.fillText(String(node.metadata.state || ''), x, y + size + 45);
           console.log(`Drawing EC2 state: ${node.metadata.state}`);
         }
-        if ('is_ai' in node.metadata && node.metadata.is_ai) {
+        if ('is_ai' in node.metadata && node.metadata.is_ai && 
+            'ai_detection_confidence' in node.metadata && 
+            typeof node.metadata.ai_detection_confidence === 'number' && 
+            node.metadata.ai_detection_confidence > 0.8) {
           // Draw flashing border around icon
           const currentTime = Date.now();
           const alpha = Math.abs(Math.sin(currentTime / 500)); // Flash every 500ms
@@ -639,7 +642,7 @@ const AI_SPM: React.FC = () => {
           // Draw AI Instance text with matching color
           ctx.fillStyle = borderColor.replace('rgba', 'rgb').replace(/[^,]+\)$/, '1)');
           ctx.fillText('AI Instance', x, y + size + 60);
-          console.log(`Drawing AI instance indicator for: ${node.name}`);
+          console.log(`Drawing AI instance indicator for: ${node.name} with confidence: ${node.metadata.ai_detection_confidence}`);
         }
         // Draw gray border for non-running instances
         if (node.type === 'EC2' && 'state' in node.metadata && (node.metadata as Ec2Metadata).state.toLowerCase() !== 'running') {
@@ -1110,9 +1113,19 @@ const AI_SPM: React.FC = () => {
     if (!contextMenu?.node) return;
     const instance = contextMenu.node as EC2Node;
     if (instance.metadata.ai_detection_details) {
+      // Create a formatted details string that includes the confidence value
+      let detailsText = instance.metadata.ai_detection_details;
+      
+      // Add confidence information if available
+      if ('ai_detection_confidence' in instance.metadata && 
+          typeof instance.metadata.ai_detection_confidence === 'number') {
+        const confidencePercent = (instance.metadata.ai_detection_confidence * 100).toFixed(1);
+        detailsText = `Confidence: ${confidencePercent}%\n\n${detailsText}`;
+      }
+      
       setAiDetailsDialog({
         open: true,
-        details: instance.metadata.ai_detection_details
+        details: detailsText
       });
     }
     handleContextMenuClose();
@@ -1442,13 +1455,6 @@ const AI_SPM: React.FC = () => {
       >
         <DialogTitle>AI Detection Details</DialogTitle>
         <DialogContent>
-          {contextMenu?.node && 
-           'ai_detection_confidence' in (contextMenu.node as EC2Node).metadata && 
-           typeof (contextMenu.node as EC2Node).metadata.ai_detection_confidence === 'number' && (
-            <Typography variant="subtitle1" gutterBottom>
-              Confidence: {((contextMenu.node as EC2Node).metadata.ai_detection_confidence * 100).toFixed(1)}%
-            </Typography>
-          )}
           <Typography variant="body1" component="pre" sx={{ whiteSpace: 'pre-wrap' }}>
             {aiDetailsDialog.details}
           </Typography>
@@ -1469,7 +1475,12 @@ const AI_SPM: React.FC = () => {
             : undefined
         }
       >
-        {contextMenu?.node && 'is_ai' in contextMenu.node.metadata && (contextMenu.node as EC2Node).metadata.is_ai && (
+        {contextMenu?.node && 
+         'is_ai' in contextMenu.node.metadata && 
+         (contextMenu.node as EC2Node).metadata.is_ai && 
+         'ai_detection_confidence' in contextMenu.node.metadata && 
+         typeof (contextMenu.node as EC2Node).metadata.ai_detection_confidence === 'number' && 
+         (contextMenu.node as EC2Node).metadata.ai_detection_confidence >= 0.8 && (
           <MenuItem onClick={handleAIDetails}>AI Details</MenuItem>
         )}
         <MenuItem onClick={() => contextMenu?.node && handleIgnoreToggle(contextMenu.node)}>
