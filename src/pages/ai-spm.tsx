@@ -1139,18 +1139,30 @@ const AI_SPM: React.FC = () => {
     if (!node) return;
 
     try {
-      const updatedNode = {
-        ...node,
-        metadata: {
-          ...node.metadata,
-          is_ignored: !(node.metadata as BaseMetadata).is_ignored
-        }
+      // Create update payload for data layer using batch format
+      const updatePayload = {
+        assets: [{
+          asset_type: node.type.toLowerCase(),
+          unique_id: node.id,
+          name: node.name,
+          description: (node as any).description || '',
+          metadata: {
+            ...node.metadata,
+            is_ignored: !(node.metadata as BaseMetadata).is_ignored
+          },
+          tags: (node as any).tags || {},
+          is_stale: (node as any).is_stale || false
+        }]
       };
 
-      // Update the asset in the backend
-      await api.updateAsset(node.id, {
-        metadata: updatedNode.metadata
-      });
+      console.log('Sending ignore toggle request with payload:', JSON.stringify(updatePayload, null, 2));
+      console.log('Current node metadata:', JSON.stringify(node.metadata, null, 2));
+      console.log('Current is_ignored value:', (node.metadata as BaseMetadata).is_ignored);
+      console.log('New is_ignored value:', !(node.metadata as BaseMetadata).is_ignored);
+      
+      // Update the asset in the backend using batch endpoint
+      const response = await api.post(`/data-access/assets/${node.type.toLowerCase()}/batch`, updatePayload);
+      console.log('Ignore toggle response:', response);
 
       // Update the node in the graph
       setGraphData(prevData => {
@@ -1158,14 +1170,20 @@ const AI_SPM: React.FC = () => {
         return {
           ...prevData,
           nodes: prevData.nodes.map(n =>
-            n.id === node.id ? updatedNode : n
+            n.id === node.id ? {
+              ...n,
+              metadata: {
+                ...n.metadata,
+                is_ignored: !(n.metadata as BaseMetadata).is_ignored
+              }
+            } : n
           ),
           links: prevData.links // Preserve existing links
         };
       });
 
       // Show success message
-      alert(`Asset ${(updatedNode.metadata as BaseMetadata).is_ignored ? 'ignored' : 'unignored'} successfully`);
+      alert(`Asset ${!(node.metadata as BaseMetadata).is_ignored ? 'ignored' : 'unignored'} successfully`);
     } catch (error) {
       console.error('Error toggling ignore status:', error);
       alert('Failed to update asset status');
