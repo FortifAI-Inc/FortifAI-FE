@@ -19,12 +19,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let targetUrl;
     if (cleanPath === 'token') {
       targetUrl = `${apiUrl}/token`;
-    } else if (cleanPath === 'detect') {
+    } else if (cleanPath === 'api/ai-detector/detect') {
       // Route AI detector requests through the API gateway
       targetUrl = `${apiUrl}/api/ai-detector/detect`;
       console.log(`Routing AI detector request to: ${targetUrl}`);
+    } else if (cleanPath === 'api/assets-monitor/sync') {
+      // Special handling for assets-monitor sync endpoint
+      targetUrl = `${apiUrl}/api/assets-monitor/sync`;
+      console.log(`Routing assets-monitor sync request to: ${targetUrl}`);
+      // Add Authorization header for assets-monitor sync endpoint
+      req.headers.authorization = `Bearer ${process.env.AUTH_TOKEN || 'development_token'}`;
     } else {
-      targetUrl = `${apiUrl}/api/${cleanPath}`;
+      targetUrl = `${apiUrl}/${cleanPath}`;
     }
 
     console.log(`Proxying request to: ${targetUrl}`);

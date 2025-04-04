@@ -792,12 +792,6 @@ const AI_SPM: React.FC = () => {
     
     // Log EC2 instances
     const ec2Instances = graphData.nodes.filter(isEC2Node);
-    console.error('[Canvas Debug] EC2 instances:', ec2Instances.map(instance => ({
-      id: instance.id,
-      name: instance.name,
-      vpcId: instance.metadata.vpc_id,
-      subnetId: instance.metadata.subnet_id
-    })));
 
     vpcs.forEach((vpc, vpcIndex) => {
       const vpcX = mainFrameX + fixedSectionSpacing + (vpcIndex * ((mainFrameWidth - 2 * fixedSectionSpacing) / vpcs.length));
@@ -904,18 +898,9 @@ const AI_SPM: React.FC = () => {
           const subnetMetadata = (subnet as SubnetNode).metadata;
           const subnetId = subnetMetadata.subnet_id;
           const instanceSubnetId = instance.metadata.subnet_id;
-          console.error('[Canvas Debug] Comparing subnet', subnet.name, ':', {
-            subnetId,
-            instanceSubnetId,
-            matches: subnetId === instanceSubnetId
-          });
           return subnetId === instanceSubnetId;
         });
 
-        console.error('[Canvas Debug] Found', ec2Instances.length, 'EC2 instances for subnet', subnet.name, {
-          subnetId: (subnet as SubnetNode).metadata.subnet_id,
-          matchingInstances: ec2Instances.map(i => i.name)
-        });
 
         if (ec2Instances.length > 0) {
           const instanceWidth = 40;  // Width of each EC2 instance
@@ -940,16 +925,6 @@ const AI_SPM: React.FC = () => {
           const rowWidth = Math.min(ec2Instances.length, maxInstancesPerRow) * (instanceWidth + padding) - padding;
           const startX = subnetX + framePadding + Math.max(0, (subnetFrameWidth - rowWidth) / 2);
           
-          console.error('[Canvas Debug] Drawing EC2 instances in subnet', subnet.name, {
-            startX,
-            startY,
-            rowWidth,
-            numRows,
-            maxInstancesPerRow,
-            totalHeight,
-            subnetFrameWidth,
-            subnetFrameHeight
-          });
           
           // Draw instances in a grid layout
           ec2Instances.forEach((instance, index) => {
@@ -1268,7 +1243,7 @@ const AI_SPM: React.FC = () => {
     try {
       setIsSyncing(true);
       setSyncError(null);
-      await api.post('/assets-monitor/sync');
+      await api.post('/api/assets-monitor/sync');
     } catch (err) {
       setSyncError('Failed to sync assets');
       console.error('Error syncing assets:', err);
@@ -1283,7 +1258,7 @@ const AI_SPM: React.FC = () => {
       console.log('Starting AI detection...');
       setIsDetecting(true);
       setDetectionError(null);
-      const result = await api.post('/detect');
+      const result = await api.post('/api/ai-detector/detect');
       console.log('AI detection result:', result);
     } catch (err) {
       console.error('Error detecting AI:', err);

@@ -132,7 +132,11 @@ class ApiService {
       await this.authenticate();
     }
 
-    const url = `/api/proxy${endpoint}`;
+    // Don't add /api/proxy prefix if the endpoint already starts with /api/
+    const url = endpoint.startsWith('/api/') 
+      ? `/api/proxy${endpoint.substring(4)}` 
+      : `/api/proxy${endpoint}`;
+    
     console.log(`Fetching with auth: ${url}`, options);
 
     const response = await fetch(url, {
@@ -217,20 +221,11 @@ class ApiService {
       const assets: AssetData[] = [];
       
       for (const assetType of assetTypes) {
-        console.error(`[API Debug] Fetching ${assetType} assets...`);
         const data = await this.fetchAssets(assetType);
-        console.error(`[API Debug] Raw ${assetType} data:`, data);
         
         // Process each asset
         data.forEach(asset => {
           if (assetType === 'ec2') {
-            console.error('[API Debug] Processing EC2 asset:', {
-              id: asset.id,
-              name: asset.name,
-              metadata: asset.metadata,
-              vpcId: asset.metadata?.vpc_id,
-              subnetId: asset.metadata?.subnet_id
-            });
           }
           
           const processedAsset: AssetData = {
