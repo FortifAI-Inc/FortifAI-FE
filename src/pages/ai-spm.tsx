@@ -55,13 +55,17 @@ interface Ec2Metadata extends BaseMetadata {
   instance_type: string;
   state: string;
   private_ip_address: string;
-  public_ip_address?: string;
+  public_ip_address: string;
   launch_time: string;
   network_interfaces: string[];
   architecture: string;
   platform_details: string;
   vpc_id: string;
   subnet_id: string;
+  is_ai: boolean;
+  ai_detection_details: string;
+  ai_detection_confidence: number;
+  ai_detected_processes: string[];
 }
 
 interface SubnetMetadata extends BaseMetadata {
@@ -194,6 +198,10 @@ const AI_SPM: React.FC = () => {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Add new state for AI detection
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [detectionError, setDetectionError] = useState<string | null>(null);
 
   useEffect(() => {
     const img = new Image();
@@ -1269,6 +1277,22 @@ const AI_SPM: React.FC = () => {
     }
   };
 
+  // Add new handler for AI detection
+  const handleDetectAI = async () => {
+    try {
+      console.log('Starting AI detection...');
+      setIsDetecting(true);
+      setDetectionError(null);
+      const result = await api.post('/detect');
+      console.log('AI detection result:', result);
+    } catch (err) {
+      console.error('Error detecting AI:', err);
+      setDetectionError('Failed to detect AI instances');
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -1369,7 +1393,7 @@ const AI_SPM: React.FC = () => {
         {/* Header */}
         <Box sx={{ 
           p: 2, 
-          pr: 6, // Increased from 4 to 6 (48px) to ensure 30px margin on the right
+          pr: 6,
           borderBottom: 1, 
           borderColor: 'divider', 
           display: 'flex', 
@@ -1377,27 +1401,43 @@ const AI_SPM: React.FC = () => {
           justifyContent: 'space-between' 
         }}>
           <Typography variant="h5">Cloud Assets</Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<SyncIcon />}
-            onClick={handleSyncAssets}
-            disabled={isSyncing}
-            sx={{ 
-              ml: 4,
-              minWidth: '140px' // Ensure consistent button width
-            }}
-          >
-            {isSyncing ? 'Syncing...' : 'Sync Assets'}
-          </Button>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<SyncIcon />}
+              onClick={handleDetectAI}
+              disabled={isDetecting}
+              sx={{ minWidth: '140px' }}
+            >
+              {isDetecting ? 'Detecting...' : 'Detect AI'}
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<SyncIcon />}
+              onClick={handleSyncAssets}
+              disabled={isSyncing}
+              sx={{ minWidth: '140px' }}
+            >
+              {isSyncing ? 'Syncing...' : 'Sync Assets'}
+            </Button>
+          </Box>
         </Box>
 
-        {/* Show sync error if any */}
-        {syncError && (
+        {/* Show sync and detection errors if any */}
+        {(syncError || detectionError) && (
           <Box sx={{ p: 2 }}>
-            <Alert severity="error" onClose={() => setSyncError(null)}>
-              {syncError}
-            </Alert>
+            {syncError && (
+              <Alert severity="error" onClose={() => setSyncError(null)} sx={{ mb: 1 }}>
+                {syncError}
+              </Alert>
+            )}
+            {detectionError && (
+              <Alert severity="error" onClose={() => setDetectionError(null)}>
+                {detectionError}
+              </Alert>
+            )}
           </Box>
         )}
 
@@ -1427,6 +1467,13 @@ const AI_SPM: React.FC = () => {
       >
         <DialogTitle>AI Detection Details</DialogTitle>
         <DialogContent>
+          {contextMenu?.node && 
+           'ai_detection_confidence' in (contextMenu.node as EC2Node).metadata && 
+           typeof (contextMenu.node as EC2Node).metadata.ai_detection_confidence === 'number' && (
+            <Typography variant="subtitle1" gutterBottom>
+              Confidence: {((contextMenu.node as EC2Node).metadata.ai_detection_confidence * 100).toFixed(1)}%
+            </Typography>
+          )}
           <Typography variant="body1" component="pre" sx={{ whiteSpace: 'pre-wrap' }}>
             {aiDetailsDialog.details}
           </Typography>

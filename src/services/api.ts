@@ -132,7 +132,10 @@ class ApiService {
       await this.authenticate();
     }
 
-    const response = await fetch(`/api/proxy${endpoint}`, {
+    const url = `/api/proxy${endpoint}`;
+    console.log(`Fetching with auth: ${url}`, options);
+
+    const response = await fetch(url, {
       ...options,
       headers: {
         'Authorization': `Bearer ${this.token}`,
@@ -140,6 +143,8 @@ class ApiService {
         ...options.headers,
       }
     });
+
+    console.log(`Response status: ${response.status}`, response.statusText);
 
     if (response.status === 401) {
       // Token expired, try to re-authenticate
@@ -370,6 +375,7 @@ class ApiService {
 
   async post(endpoint: string, data?: any): Promise<any> {
     try {
+      console.log(`Making POST request to ${endpoint}`, data);
       return await this.fetchWithAuth(endpoint, {
         method: 'POST',
         body: data ? JSON.stringify(data) : undefined,
