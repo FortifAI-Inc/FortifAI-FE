@@ -1134,14 +1134,12 @@ const AI_SPM: React.FC = () => {
   };
 
   const handleIgnoreToggle = async (node: Node) => {
-    if (!node) return;
-
     try {
       // Create update payload for data layer using batch format
       const updatePayload = {
         assets: [{
           asset_type: node.type.toLowerCase(),
-          unique_id: node.id,
+          unique_id: node.id.replace(`AssetType.${node.type.toLowerCase()}_`, ''), // Remove the prefix to get the actual ID
           name: node.name,
           description: (node as any).description || '',
           metadata: {
