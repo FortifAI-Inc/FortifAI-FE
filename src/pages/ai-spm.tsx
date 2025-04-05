@@ -582,8 +582,17 @@ const AI_SPM: React.FC = () => {
     ctx.fillStyle = node.type === 'IGW' ? '#000000' : theme.palette.text.primary;
     ctx.font = 'bold 12px Arial';  // Make text bold for better visibility
     ctx.textAlign = 'center';
-    ctx.fillText(node.name, x, y + size + 15);
-    console.log(`Drawing node name: ${node.name}`);
+    
+    // Adjust vertical position of instance name based on whether it's an AI instance
+    const isAI = node.type === 'EC2' && 
+                 'is_ai' in node.metadata && 
+                 node.metadata.is_ai && 
+                 'ai_detection_confidence' in node.metadata && 
+                 (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8;
+    
+    // Move instance name higher if it's an AI instance to make room for the "AI Instance" text
+    const nameYPosition = isAI ? y + size + 10 : y + size + 15;
+    ctx.fillText(node.name, x, nameYPosition);
 
     // Draw VPC ID if available
     switch (node.type) {
@@ -617,36 +626,20 @@ const AI_SPM: React.FC = () => {
           const instanceType = String(node.metadata.instance_type || '');
           const state = String(node.metadata.state || '');
           const displayType = state.toLowerCase() !== 'running' ? `${instanceType} (off)` : instanceType;
-          ctx.fillText(displayType, x, y + size + 30);
-          console.log(`Drawing EC2 instance type: ${displayType}`);
+          
+          // Adjust vertical position of instance type based on whether it's an AI instance
+          const typeYPosition = isAI ? y + size + 25 : y + size + 30;
+          ctx.fillText(displayType, x, typeYPosition);
         }
         if ('state' in node.metadata) {
-          ctx.fillText(String(node.metadata.state || ''), x, y + size + 45);
-          console.log(`Drawing EC2 state: ${node.metadata.state}`);
+          // Adjust vertical position of state based on whether it's an AI instance
+          const stateYPosition = isAI ? y + size + 40 : y + size + 45;
+          ctx.fillText(String(node.metadata.state || ''), x, stateYPosition);
         }
-        if ('is_ai' in node.metadata && node.metadata.is_ai && 
-            'ai_detection_confidence' in node.metadata && 
-            typeof node.metadata.ai_detection_confidence === 'number' && 
-            node.metadata.ai_detection_confidence > 0.8) {
-          // Draw flashing border around icon
-          const currentTime = Date.now();
-          const alpha = Math.abs(Math.sin(currentTime / 500)); // Flash every 500ms
-          // Use green for sandbox VPC instances, red for others
-          const borderColor = (node as EC2Node).metadata.vpc_id === sandboxVpcId
-            ? `rgba(0, 255, 0, ${alpha})`  // Green for sandbox
-            : `rgba(255, 0, 0, ${alpha})`; // Red for others
-          ctx.strokeStyle = borderColor;
-          ctx.lineWidth = 3;  // Increased from 2 to 3 for thicker border
-          ctx.strokeRect(x - 24, y - 24, 48, 48);
-
-          // Draw AI Instance text with matching color
-          ctx.fillStyle = borderColor.replace('rgba', 'rgb').replace(/[^,]+\)$/, '1)');
-          ctx.fillText('AI Instance', x, y + size + 60);
-          console.log(`Drawing AI instance indicator for: ${node.name} with confidence: ${node.metadata.ai_detection_confidence}`);
-        }
+        
         // Draw gray border for non-running instances
         if (node.type === 'EC2' && 'state' in node.metadata && (node.metadata as Ec2Metadata).state.toLowerCase() !== 'running') {
-          ctx.strokeStyle = '#808080';
+          ctx.strokeStyle = '#808080'; // Light gray
           ctx.lineWidth = 3;
           ctx.strokeRect(x - 24, y - 24, 48, 48);
           console.log(`Drawing gray border for non-running instance: ${node.name}`);
@@ -1113,15 +1106,20 @@ const AI_SPM: React.FC = () => {
     if (!contextMenu?.node) return;
     const instance = contextMenu.node as EC2Node;
     if (instance.metadata.ai_detection_details) {
-      // Create a formatted details string that includes the confidence value
-      let detailsText = instance.metadata.ai_detection_details;
+      // Create a formatted details string that includes the confidence value and final verdict
+      let detailsText = '';
       
       // Add confidence information if available
       if ('ai_detection_confidence' in instance.metadata && 
           typeof instance.metadata.ai_detection_confidence === 'number') {
         const confidencePercent = (instance.metadata.ai_detection_confidence * 100).toFixed(1);
-        detailsText = `Confidence: ${confidencePercent}%\n\n${detailsText}`;
+        const isAI = instance.metadata.is_ai && instance.metadata.ai_detection_confidence > 0.8;
+        detailsText = `Confidence: ${confidencePercent}%\n`;
+        detailsText += `Final Verdict: ${isAI ? 'AI Instance' : 'Not an AI Instance'}\n\n`;
       }
+      
+      // Add detection details
+      detailsText += instance.metadata.ai_detection_details;
       
       setAiDetailsDialog({
         open: true,
@@ -1209,14 +1207,34 @@ const AI_SPM: React.FC = () => {
     if (graphData) {
       graphData.nodes.forEach(vpc => {
         if (vpc.type === 'VPC') {
+          
+          // Initialize tags array if it doesn't exist
+          if (!vpc.metadata.tags) {
+            vpc.metadata.tags = [];
+          }
+          
+          
+          // Check for both Name and Environment tags
           const nameTag = vpc.metadata.tags?.find(tag => tag.Key === 'Name');
-          if (nameTag) {
-            const nameTagValue = nameTag.Value;
-            if (nameTagValue === 'Sandbox') {
-              vpc.metadata.is_sandbox = true;
-              if (vpc.metadata.vpc_id) {
-                setSandboxVpcId(vpc.metadata.vpc_id);
-              }
+          const envTag = vpc.metadata.tags?.find(tag => tag.Key === 'Environment');
+          
+          // Check if the VPC name itself contains "Sandbox" as a fallback
+          const nameContainsSandbox = vpc.name.includes('Sandbox');
+          
+          if (nameTag && nameTag.Value === 'Sandbox') {
+            vpc.metadata.is_sandbox = true;
+            if (vpc.metadata.vpc_id) {
+              setSandboxVpcId(vpc.metadata.vpc_id);
+            }
+          } else if (envTag && envTag.Value === 'Sandbox') {
+            vpc.metadata.is_sandbox = true;
+            if (vpc.metadata.vpc_id) {
+              setSandboxVpcId(vpc.metadata.vpc_id);
+            }
+          } else if (nameContainsSandbox) {
+            vpc.metadata.is_sandbox = true;
+            if (vpc.metadata.vpc_id) {
+              setSandboxVpcId(vpc.metadata.vpc_id);
             }
           }
         }
@@ -1224,51 +1242,61 @@ const AI_SPM: React.FC = () => {
     }
   }, [graphData]);
 
-  // Add this function to find the sandbox VPC
+  // Add a new useEffect for drawing borders after sandbox identification
+  useEffect(() => {
+    if (graphData && sandboxVpcId !== null && canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) return;
+
+      graphData.nodes.forEach(node => {
+        if (node.type === 'EC2') {
+          const isInSandboxVPC = (node as EC2Node).metadata.vpc_id === sandboxVpcId;
+          const isAI = 'is_ai' in node.metadata && 
+                      node.metadata.is_ai && 
+                      'ai_detection_confidence' in node.metadata && 
+                      (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8;
+          const isIgnored = (node.metadata as BaseMetadata).is_ignored === true;
+          
+          if (isAI) {
+            let borderColor;
+            
+            if (isInSandboxVPC) {
+              borderColor = 'rgb(0, 128, 0)'; // Grass green
+            } else if (isIgnored) {
+              borderColor = 'rgb(255, 192, 203)'; // Pink
+            } else {
+              borderColor = 'rgb(255, 0, 0)'; // Red
+            }
+            
+            // Draw border around icon
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = 3;  // Thick border
+            const x = (node.metadata as any).x;
+            const y = (node.metadata as any).y;
+            if (typeof x === 'number' && typeof y === 'number') {
+              ctx.strokeRect(x - 24, y - 24, 48, 48);
+
+              // Draw AI Instance text with matching color
+              ctx.fillStyle = borderColor;
+              ctx.textAlign = 'center';  // Center the text
+              ctx.fillText('AI Instance', x, y + 65);  // Moved up slightly from 60 to 55
+            }
+          }
+        }
+      });
+    }
+  }, [graphData, sandboxVpcId]);
+
+  // Update the findSandboxVPC function to use the same logic
   const findSandboxVPC = (nodes: AssetWithMetadata[]): AssetWithMetadata | undefined => {
     return nodes.find(node =>
-      node.type === 'VPC' &&
-      node.metadata.tags?.some((tag: Tag) =>
-        tag.Key === 'Environment' && tag.Value === 'Sandbox'
+      node.type === 'VPC' && (
+        (node.metadata.tags?.some((tag: Tag) => tag.Key === 'Name' && tag.Value === 'Sandbox')) ||
+        (node.metadata.tags?.some((tag: Tag) => tag.Key === 'Environment' && tag.Value === 'Sandbox')) ||
+        node.name.includes('Sandbox')
       )
     );
   };
-
-  // Update the useEffect for graph rendering
-  useEffect(() => {
-    if (!graphRef.current || !graphData) return;
-
-    // Find sandbox VPC
-    const sandboxVPC = findSandboxVPC(graphData.nodes);
-    if (sandboxVPC) {
-      // Create sandbox frame
-      const frame = document.createElement('div');
-      frame.style.position = 'absolute';
-      frame.style.border = '2px solid #ffd700';
-      frame.style.backgroundColor = 'rgba(255, 215, 0, 0.1)';
-      frame.style.pointerEvents = 'none';
-      frame.style.zIndex = '1';
-      graphRef.current.appendChild(frame);
-
-      // Update frame position when graph updates
-      const updateFramePosition = () => {
-        const node = graphRef.current?.querySelector(`[data-id="${sandboxVPC.id}"]`);
-        if (node) {
-          const rect = node.getBoundingClientRect();
-          const containerRect = graphRef.current!.getBoundingClientRect();
-
-          frame.style.left = `${rect.left - containerRect.left}px`;
-          frame.style.top = `${rect.top - containerRect.top}px`;
-          frame.style.width = `${rect.width}px`;
-          frame.style.height = `${rect.height}px`;
-        }
-      };
-
-      // Update frame position periodically
-      const interval = setInterval(updateFramePosition, 100);
-      return () => clearInterval(interval);
-    }
-  }, [graphData]);
 
   const handleSyncAssets = async () => {
     try {
@@ -1493,22 +1521,37 @@ const AI_SPM: React.FC = () => {
             : undefined
         }
       >
-        {contextMenu?.node && 
-         'is_ai' in contextMenu.node.metadata && 
-         (contextMenu.node as EC2Node).metadata.is_ai && 
-         'ai_detection_confidence' in contextMenu.node.metadata && 
-         typeof (contextMenu.node as EC2Node).metadata.ai_detection_confidence === 'number' && 
-         (contextMenu.node as EC2Node).metadata.ai_detection_confidence >= 0.8 && (
-          <MenuItem onClick={handleAIDetails}>AI Details</MenuItem>
+        {contextMenu?.node && (
+          <>
+            <MenuItem onClick={() => handleAIDetails()}>
+              View AI Details
+            </MenuItem>
+            <MenuItem 
+              onClick={() => contextMenu?.node && handleIgnoreToggle(contextMenu.node)}
+              disabled={(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId}
+              sx={{ 
+                color: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'text.disabled' : 'inherit',
+                fontStyle: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'italic' : 'normal'
+              }}
+            >
+              {(contextMenu.node.metadata as BaseMetadata).is_ignored ? 'Unignore' : 'Ignore'} Instance
+              {(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId && ' (Disabled for Sandbox)'}
+            </MenuItem>
+            <MenuItem 
+              onClick={() => handleFortifAIAction()}
+              disabled={(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId}
+              sx={{ 
+                color: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'text.disabled' : 'inherit',
+                fontStyle: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'italic' : 'normal'
+              }}
+            >
+              <Typography component="span" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                FortifAI 
+              </Typography>
+              {(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId && ' (Disabled for Sandbox)'}
+            </MenuItem>
+          </>
         )}
-        <MenuItem onClick={() => contextMenu?.node && handleIgnoreToggle(contextMenu.node)}>
-          {contextMenu?.node && 'is_ignored' in contextMenu.node.metadata && contextMenu.node.metadata.is_ignored ? '✓ ' : ''}Ignore
-        </MenuItem>
-        <MenuItem onClick={handleFortifAIAction}>
-          <Typography component="span" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-            FortifAI!
-          </Typography>
-        </MenuItem>
       </Menu>
     </Box>
   );
