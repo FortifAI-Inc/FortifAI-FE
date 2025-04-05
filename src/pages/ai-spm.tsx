@@ -1178,8 +1178,8 @@ const AI_SPM: React.FC = () => {
         };
       });
 
-      // Show success message
-      alert(`Asset ${!(node.metadata as BaseMetadata).is_ignored ? 'ignored' : 'unignored'} successfully`);
+      // Close the context menu after successful update
+      handleContextMenuClose();
     } catch (error) {
       console.error('Error toggling ignore status:', error);
       alert('Failed to update asset status');
@@ -1529,10 +1529,16 @@ const AI_SPM: React.FC = () => {
               disabled={(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId}
               sx={{ 
                 color: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'text.disabled' : 'inherit',
-                fontStyle: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'italic' : 'normal'
+                fontStyle: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'italic' : 'normal',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}
             >
-              {(contextMenu.node.metadata as BaseMetadata).is_ignored ? 'Unignore' : 'Ignore'} Instance
+              <span>{(contextMenu.node.metadata as BaseMetadata).is_ignored ? 'Unignore' : 'Ignore'} Instance</span>
+              {(contextMenu.node.metadata as BaseMetadata).is_ignored && (
+                <span style={{ marginLeft: '8px', color: 'green' }}>✓</span>
+              )}
               {(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId && ' (Disabled for Sandbox)'}
             </MenuItem>
             <MenuItem 
