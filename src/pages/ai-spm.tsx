@@ -135,7 +135,22 @@ interface IGWNode extends Node {
 
 interface EC2Node extends Node {
   type: 'EC2';
-  metadata: Ec2Metadata;
+  metadata: BaseMetadata & {
+    instance_id: string;
+    instance_type: string;
+    state: string;
+    private_ip_address: string;
+    public_ip_address: string;
+    launch_time: string;
+    network_interfaces: string[];
+    architecture: string;
+    platform_details: string;
+    vpc_id: string;
+    subnet_id: string;
+  };
+  description?: string;
+  tags?: Tag[];
+  is_stale?: boolean;
 }
 
 interface S3Node extends Node {
@@ -202,6 +217,7 @@ const AI_SPM: React.FC = () => {
   // Add new state for AI detection
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
+  const [tempNotification, setTempNotification] = useState<string | null>(null);
 
   useEffect(() => {
     const img = new Image();
@@ -588,7 +604,9 @@ const AI_SPM: React.FC = () => {
                  'is_ai' in node.metadata && 
                  node.metadata.is_ai && 
                  'ai_detection_confidence' in node.metadata && 
-                 (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8;
+                 (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8 &&
+                 'state' in node.metadata &&
+                 (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
     
     // Move instance name higher if it's an AI instance to make room for the "AI Instance" text
     const nameYPosition = isAI ? y + size + 10 : y + size + 15;
@@ -1189,12 +1207,39 @@ const AI_SPM: React.FC = () => {
   const handleFortifAIAction = async () => {
     if (!contextMenu?.node) return;
 
-    const instanceId = (contextMenu.node as EC2Node).metadata.instance_id;
+    const node = contextMenu.node as EC2Node;
+    let instanceId = node.metadata.instance_id;
+
+    // If instance_id is not in metadata, try to extract it from the node ID
+    if (!instanceId && node.id.startsWith('AssetType.ec2_')) {
+      instanceId = node.id.substring('AssetType.ec2_'.length);
+      console.log('Extracted instance ID from node ID:', instanceId);
+    }
+
+    if (!instanceId) {
+      console.error('No instance ID found in node metadata or ID:', node);
+      setDetectionError('Failed to get instance ID');
+      return;
+    }
+
     try {
-      const response = await api.fortifaiAction(instanceId);
+      // Show a temporary notification that auto-dismisses after 5 seconds
+      setTempNotification('Relocating instance to sandbox...');
+      
+      console.log('Making request to relocate instance:', instanceId);
+      
+      // Call the relocate-ec2 endpoint with the instance ID
+      const response = await api.post('/api/sandbox-enforcer/relocate-ec2', {
+        instance_id: instanceId
+      });
+      
       console.log('FortifAI action result:', response);
+      
+      // Refresh the graph data to show updated instance location
+      await handleRefresh();
     } catch (err) {
       console.error('Error processing FortifAI action:', err);
+      setDetectionError(err instanceof Error ? err.message : 'Failed to relocate instance to sandbox');
     } finally {
       handleContextMenuClose();
     }
@@ -1252,7 +1297,9 @@ const AI_SPM: React.FC = () => {
           const isAI = 'is_ai' in node.metadata && 
                       node.metadata.is_ai && 
                       'ai_detection_confidence' in node.metadata && 
-                      (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8;
+                      (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8 &&
+                      'state' in node.metadata &&
+                      (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
           const isIgnored = (node.metadata as BaseMetadata).is_ignored === true;
           
           if (isAI) {
@@ -1309,17 +1356,37 @@ const AI_SPM: React.FC = () => {
     }
   };
 
-  // Add new handler for AI detection
+  // Add useEffect to handle temporary notifications
+  useEffect(() => {
+    if (tempNotification) {
+      const timer = setTimeout(() => {
+        setTempNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [tempNotification]);
+
   const handleDetectAI = async () => {
     try {
       console.log('Starting AI detection...');
       setIsDetecting(true);
       setDetectionError(null);
+      
+      // Show a temporary notification that auto-dismisses after 5 seconds
+      setTempNotification('AI detection started...');
+      
       const result = await api.post('/api/ai-detector/detect');
       console.log('AI detection result:', result);
+      
+      // Refresh the graph data to show updated AI detection results
+      await handleRefresh();
     } catch (err) {
       console.error('Error detecting AI:', err);
-      setDetectionError('Failed to detect AI instances');
+      if (err instanceof Error && err.message.includes('timeout')) {
+        setDetectionError('AI detection is taking longer than expected. The process is still running in the background. Please refresh the page in a few minutes to see the results.');
+      } else {
+        setDetectionError(err instanceof Error ? err.message : 'Failed to detect AI instances');
+      }
     } finally {
       setIsDetecting(false);
     }
@@ -1470,6 +1537,23 @@ const AI_SPM: React.FC = () => {
                 {detectionError}
               </Alert>
             )}
+          </Box>
+        )}
+
+        {/* Temporary notification */}
+        {tempNotification && (
+          <Box sx={{ 
+            position: 'absolute', 
+            top: 16, 
+            right: 16, 
+            zIndex: 1000,
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '4px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+          }}>
+            {tempNotification}
           </Box>
         )}
 

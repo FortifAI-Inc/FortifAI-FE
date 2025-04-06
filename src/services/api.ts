@@ -132,36 +132,65 @@ class ApiService {
       await this.authenticate();
     }
 
-    // Don't add /api/proxy prefix if the endpoint already starts with /api/
-    const url = endpoint.startsWith('/api/') 
-      ? `/api/proxy${endpoint.substring(4)}` 
-      : `/api/proxy${endpoint}`;
+    // Construct the URL based on whether the endpoint starts with /api/
+    let url;
+    if (endpoint.startsWith('/api/')) {
+      // For all endpoints starting with /api/, add /proxy after /api
+      url = `/api/proxy${endpoint.substring(4)}`;
+    } else {
+      // For other endpoints, remove any leading slash and add /api/proxy/
+      url = `/api/proxy/${endpoint.replace(/^\//, '')}`;
+    }
     
     console.log(`Fetching with auth: ${url}`, options);
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        ...(options.method && options.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
-        ...options.headers,
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeout = endpoint.includes('/ai-detector/detect') ? 600000 : 30000; // 10 minutes for AI detection, 30 seconds for others
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      // Ensure the request body is properly formatted for sandbox-enforcer endpoints
+      let requestOptions = { ...options };
+      if (endpoint.includes('/sandbox-enforcer/') && options.body) {
+        const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+        requestOptions.body = JSON.stringify(body);
       }
-    });
 
-    console.log(`Response status: ${response.status}`, response.statusText);
+      const response = await fetch(url, {
+        ...requestOptions,
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          ...(options.method && options.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
+          ...options.headers,
+        },
+        signal: controller.signal
+      });
 
-    if (response.status === 401) {
-      // Token expired, try to re-authenticate
-      this.token = null;
-      await this.authenticate();
-      return this.fetchWithAuth(endpoint, options);
+      clearTimeout(timeoutId);
+      console.log(`Response status: ${response.status}`, response.statusText);
+
+      if (response.status === 401) {
+        // Token expired, try to re-authenticate
+        this.token = null;
+        await this.authenticate();
+        return this.fetchWithAuth(endpoint, options);
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'No error details available');
+        console.error(`API request failed: ${response.status} ${response.statusText}`, errorText);
+        throw new Error(`API request failed: ${response.statusText}`);
+      }
+
+      return response.json();
+    } catch (error: unknown) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`Request timed out after ${timeout/1000} seconds. The AI detection process may still be running in the background. Please check the status later.`);
+      }
+      throw error;
     }
-
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
-    }
-
-    return response.json();
   }
 
   private async fetchAssets(assetType: string): Promise<AssetData[]> {
