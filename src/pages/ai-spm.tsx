@@ -23,9 +23,11 @@ import {
   IAMUserIcon
 } from 'react-aws-icons';
 import ReactDOM from 'react-dom';
-import { api, AssetData, GraphData, Link, NodeType } from '../services/api';
+import { api, AssetData, GraphData, Link } from '../services/api';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
+import { config, API_VERSION } from '../config';
+import { NodeType } from '../types';
 
 interface Tag {
   Key: string;
@@ -35,6 +37,12 @@ interface Tag {
 interface BaseMetadata {
   asset_type: string;
   vpc_id?: string;
+  VpcId?: string;
+  metadata?: {
+    vpc_id?: string;
+    VpcId?: string;
+    [key: string]: any;
+  };
   is_ai?: boolean;
   ai_detection_details?: string;
   is_ignored?: boolean;
@@ -44,6 +52,7 @@ interface BaseMetadata {
   y?: number;
   width?: number;
   height?: number;
+  [key: string]: any;
 }
 
 interface VpcMetadata extends BaseMetadata {
@@ -234,6 +243,26 @@ const AI_SPM: React.FC = () => {
       try {
         setLoading(true);
         const data = await api.getGraphData();
+
+        // Ensure all subnets have the proper metadata structure
+        if (data && data.nodes) {
+          data.nodes.forEach((node: AssetWithMetadata) => {
+            if (node.type === 'Subnet') {
+              // Ensure metadata exists
+              if (!node.metadata) {
+                node.metadata = {
+                  asset_type: 'subnet',
+                  vpc_id: 'unknown',
+                  subnet_id: node.id.replace('AssetType.subnet_', ''),
+                  cidr_block: '',
+                  availability_zone: '',
+                  unique_id: node.id
+                } as SubnetMetadata;
+              }
+            }
+          });
+        }
+
         setGraphData(data);
         setError(null);
       } catch (err) {
@@ -598,16 +627,16 @@ const AI_SPM: React.FC = () => {
     ctx.fillStyle = node.type === 'IGW' ? '#000000' : theme.palette.text.primary;
     ctx.font = 'bold 12px Arial';  // Make text bold for better visibility
     ctx.textAlign = 'center';
-    
+
     // Adjust vertical position of instance name based on whether it's an AI instance
-    const isAI = node.type === 'EC2' && 
-                 'is_ai' in node.metadata && 
-                 node.metadata.is_ai && 
-                 'ai_detection_confidence' in node.metadata && 
-                 (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8 &&
-                 'state' in node.metadata &&
-                 (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
-    
+    const isAI = node.type === 'EC2' &&
+      'is_ai' in node.metadata &&
+      node.metadata.is_ai &&
+      'ai_detection_confidence' in node.metadata &&
+      (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8 &&
+      'state' in node.metadata &&
+      (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
+
     // Move instance name higher if it's an AI instance to make room for the "AI Instance" text
     const nameYPosition = isAI ? y + size + 10 : y + size + 15;
     ctx.fillText(node.name, x, nameYPosition);
@@ -644,7 +673,7 @@ const AI_SPM: React.FC = () => {
           const instanceType = String(node.metadata.instance_type || '');
           const state = String(node.metadata.state || '');
           const displayType = state.toLowerCase() !== 'running' ? `${instanceType} (off)` : instanceType;
-          
+
           // Adjust vertical position of instance type based on whether it's an AI instance
           const typeYPosition = isAI ? y + size + 25 : y + size + 30;
           ctx.fillText(displayType, x, typeYPosition);
@@ -654,7 +683,7 @@ const AI_SPM: React.FC = () => {
           const stateYPosition = isAI ? y + size + 40 : y + size + 45;
           ctx.fillText(String(node.metadata.state || ''), x, stateYPosition);
         }
-        
+
         // Draw gray border for non-running instances
         if (node.type === 'EC2' && 'state' in node.metadata && (node.metadata as Ec2Metadata).state.toLowerCase() !== 'running') {
           ctx.strokeStyle = '#808080'; // Light gray
@@ -803,7 +832,7 @@ const AI_SPM: React.FC = () => {
 
     // Draw VPCs
     const vpcs = graphData.nodes.filter(isVPCNode);
-    
+
     // Log EC2 instances
     const ec2Instances = graphData.nodes.filter(isEC2Node);
 
@@ -814,14 +843,28 @@ const AI_SPM: React.FC = () => {
       let nameTag = "";
 
       if (vpc.metadata.tags) {
-        const nameTag = vpc.metadata.tags.find(tag => tag.Key === 'Name');
-        if (nameTag) {
-          const nameTagValue = nameTag.Value;
-          if (nameTagValue === 'Sandbox') {
-            vpc.metadata.is_sandbox = true;
-            if (vpc.metadata.vpc_id) {
-              setSandboxVpcId(vpc.metadata.vpc_id);
-            }
+        // Handle tags as an object with key-value pairs
+        const tagsObj = vpc.metadata.tags as unknown as Record<string, string>;
+        const nameTagValue = tagsObj['Name'];
+        const envTagValue = tagsObj['Environment'];
+
+        // Check if the VPC name itself contains "Sandbox" as a fallback
+        const nameContainsSandbox = vpc.name.includes('Sandbox');
+
+        if (nameTagValue === 'Sandbox') {
+          vpc.metadata.is_sandbox = true;
+          if (vpc.metadata.vpc_id) {
+            setSandboxVpcId(vpc.metadata.vpc_id);
+          }
+        } else if (envTagValue === 'Sandbox') {
+          vpc.metadata.is_sandbox = true;
+          if (vpc.metadata.vpc_id) {
+            setSandboxVpcId(vpc.metadata.vpc_id);
+          }
+        } else if (nameContainsSandbox) {
+          vpc.metadata.is_sandbox = true;
+          if (vpc.metadata.vpc_id) {
+            setSandboxVpcId(vpc.metadata.vpc_id);
           }
         }
       }
@@ -855,10 +898,15 @@ const AI_SPM: React.FC = () => {
 
       // Filter subnets for this VPC only
       const vpcSubnets = subnets.filter(subnet => {
-        const subnetVpcId = subnet.metadata.vpc_id;
-        const vpcId = vpc.metadata.vpc_id;
-        return subnetVpcId && vpcId && subnetVpcId === vpcId;
+        // Get VPC ID from the metadata structure
+        const subnetVpcId = subnet.metadata?.vpc_id;
+        const vpcId = vpc.metadata?.vpc_id;
+
+        const matches = subnetVpcId && vpcId && subnetVpcId === vpcId;
+
+        return matches;
       });
+
 
       // Calculate subnet frame dimensions
       let numSubnets = vpcSubnets.length;
@@ -921,36 +969,36 @@ const AI_SPM: React.FC = () => {
           const instanceHeight = 70;  // Height of each EC2 instance
           const padding = 20;         // Padding between instances
           const framePadding = 20;    // Padding from frame edges
-          
+
           // Calculate how many instances can fit in a row based on subnet width
           const availableWidth = subnetFrameWidth - (2 * framePadding);
           const maxInstancesPerRow = Math.max(1, Math.floor(availableWidth / (instanceWidth + padding)));
-          
+
           // Calculate number of rows needed
           const numRows = Math.ceil(ec2Instances.length / maxInstancesPerRow);
-          
+
           // Calculate total height needed for all rows
           const totalHeight = (numRows * instanceHeight) + ((numRows - 1) * padding);
-          
+
           // Calculate starting Y position to center vertically
           const startY = subnetY + framePadding + 50;//Math.max(0, (subnetFrameHeight - totalHeight) / 2);
-          
+
           // Calculate starting X position to center horizontally
           const rowWidth = Math.min(ec2Instances.length, maxInstancesPerRow) * (instanceWidth + padding) - padding;
           const startX = subnetX + framePadding + Math.max(0, (subnetFrameWidth - rowWidth) / 2);
-          
-          
+
+
           // Draw instances in a grid layout
           ec2Instances.forEach((instance, index) => {
             const row = Math.floor(index / maxInstancesPerRow);
             const col = index % maxInstancesPerRow;
-            
+
             const x = startX + (col * (instanceWidth + padding));
             const y = startY + (row * (instanceHeight + padding));
-            
+
             instance.metadata.x = x;
             instance.metadata.y = y;
-            
+
             console.debug(`Drawing EC2 ${instance.name} at (${x}, ${y})`);
             drawNode(ctx, x, y, instance);
           });
@@ -1065,14 +1113,23 @@ const AI_SPM: React.FC = () => {
     return isVPC;
   };
 
-  const isSubnetNode = (node: Node): node is Node & { type: 'Subnet' } => {
-    /*console.log('Checking subnet node:', {
+  const isSubnetNode = (node: Node): node is SubnetNode => {
+    /*console.error('Checking subnet node:', {
       name: node.name,
       type: node.type,
       metadata: node.metadata,
       isSubnet: node.type === 'Subnet'
     });*/
-    return node.type === 'Subnet';
+    if (node.type !== 'Subnet') return false;
+
+    const metadata = node.metadata;
+    const isSubnetMetadata =
+      metadata.asset_type === 'subnet' &&
+      'subnet_id' in metadata && typeof metadata.subnet_id === 'string' &&
+      'cidr_block' in metadata && typeof metadata.cidr_block === 'string' &&
+      'availability_zone' in metadata && typeof metadata.availability_zone === 'string' &&
+      'vpc_id' in metadata && typeof metadata.vpc_id === 'string';
+    return isSubnetMetadata ? true : false;
   };
 
   const isEC2Node = (node: Node): node is EC2Node => {
@@ -1080,14 +1137,10 @@ const AI_SPM: React.FC = () => {
   };
 
   const isIGWNode = (node: Node): node is IGWNode => {
-    /*console.log('Checking IGW node:', {
-      name: node.name,
-      type: node.type,
-      metadata: node.metadata,
-      isIGW: node.type === 'IGW',
-      hasVpcId: 'vpc_id' in node.metadata
-    });*/
-    return node.type === 'IGW' && 'vpc_id' in node.metadata;
+    if (node.type !== 'IGW') return false;
+
+    const metadata = node.metadata;
+    return 'vpc_id' in metadata || 'VpcId' in metadata;
   };
 
   const handleContextMenu = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1126,19 +1179,19 @@ const AI_SPM: React.FC = () => {
     if (instance.metadata.ai_detection_details) {
       // Create a formatted details string that includes the confidence value and final verdict
       let detailsText = '';
-      
+
       // Add confidence information if available
-      if ('ai_detection_confidence' in instance.metadata && 
-          typeof instance.metadata.ai_detection_confidence === 'number') {
+      if ('ai_detection_confidence' in instance.metadata &&
+        typeof instance.metadata.ai_detection_confidence === 'number') {
         const confidencePercent = (instance.metadata.ai_detection_confidence * 100).toFixed(1);
         const isAI = instance.metadata.is_ai && instance.metadata.ai_detection_confidence > 0.8;
         detailsText = `Confidence: ${confidencePercent}%\n`;
         detailsText += `Final Verdict: ${isAI ? 'AI Instance' : 'Not an AI Instance'}\n\n`;
       }
-      
+
       // Add detection details
       detailsText += instance.metadata.ai_detection_details;
-      
+
       setAiDetailsDialog({
         open: true,
         details: detailsText
@@ -1173,9 +1226,9 @@ const AI_SPM: React.FC = () => {
       console.log('Current node metadata:', JSON.stringify(node.metadata, null, 2));
       console.log('Current is_ignored value:', (node.metadata as BaseMetadata).is_ignored);
       console.log('New is_ignored value:', !(node.metadata as BaseMetadata).is_ignored);
-      
+
       // Update the asset in the backend using batch endpoint
-      const response = await api.post(`/data-access/assets/${node.type.toLowerCase()}/batch`, updatePayload);
+      const response = await api.post(`/api/data-access/assets/${node.type.toLowerCase()}/batch`, updatePayload);
       console.log('Ignore toggle response:', response);
 
       // Update the node in the graph
@@ -1225,16 +1278,16 @@ const AI_SPM: React.FC = () => {
     try {
       // Show a temporary notification that auto-dismisses after 5 seconds
       setTempNotification('Relocating instance to sandbox...');
-      
+
       console.log('Making request to relocate instance:', instanceId);
-      
+
       // Call the relocate-ec2 endpoint with the instance ID
       const response = await api.post('/api/sandbox-enforcer/relocate-ec2', {
         instance_id: instanceId
       });
-      
+
       console.log('FortifAI action result:', response);
-      
+
       // Refresh the graph data to show updated instance location
       await handleRefresh();
     } catch (err) {
@@ -1250,26 +1303,26 @@ const AI_SPM: React.FC = () => {
     if (graphData) {
       graphData.nodes.forEach(vpc => {
         if (vpc.type === 'VPC') {
-          
+
           // Initialize tags array if it doesn't exist
           if (!vpc.metadata.tags) {
             vpc.metadata.tags = [];
           }
-          
-          
-          // Check for both Name and Environment tags
-          const nameTag = vpc.metadata.tags?.find(tag => tag.Key === 'Name');
-          const envTag = vpc.metadata.tags?.find(tag => tag.Key === 'Environment');
-          
+
+          // Handle tags as an object with key-value pairs
+          const tagsObj = vpc.metadata.tags as unknown as Record<string, string>;
+          const nameTagValue = tagsObj['Name'];
+          const envTagValue = tagsObj['Environment'];
+
           // Check if the VPC name itself contains "Sandbox" as a fallback
           const nameContainsSandbox = vpc.name.includes('Sandbox');
-          
-          if (nameTag && nameTag.Value === 'Sandbox') {
+
+          if (nameTagValue === 'Sandbox') {
             vpc.metadata.is_sandbox = true;
             if (vpc.metadata.vpc_id) {
               setSandboxVpcId(vpc.metadata.vpc_id);
             }
-          } else if (envTag && envTag.Value === 'Sandbox') {
+          } else if (envTagValue === 'Sandbox') {
             vpc.metadata.is_sandbox = true;
             if (vpc.metadata.vpc_id) {
               setSandboxVpcId(vpc.metadata.vpc_id);
@@ -1294,17 +1347,17 @@ const AI_SPM: React.FC = () => {
       graphData.nodes.forEach(node => {
         if (node.type === 'EC2') {
           const isInSandboxVPC = (node as EC2Node).metadata.vpc_id === sandboxVpcId;
-          const isAI = 'is_ai' in node.metadata && 
-                      node.metadata.is_ai && 
-                      'ai_detection_confidence' in node.metadata && 
-                      (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8 &&
-                      'state' in node.metadata &&
-                      (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
+          const isAI = 'is_ai' in node.metadata &&
+            node.metadata.is_ai &&
+            'ai_detection_confidence' in node.metadata &&
+            (node.metadata as Ec2Metadata).ai_detection_confidence > 0.8 &&
+            'state' in node.metadata &&
+            (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
           const isIgnored = (node.metadata as BaseMetadata).is_ignored === true;
-          
+
           if (isAI) {
             let borderColor;
-            
+
             if (isInSandboxVPC) {
               borderColor = 'rgb(0, 128, 0)'; // Grass green
             } else if (isIgnored) {
@@ -1312,7 +1365,7 @@ const AI_SPM: React.FC = () => {
             } else {
               borderColor = 'rgb(255, 0, 0)'; // Red
             }
-            
+
             // Draw border around icon
             ctx.strokeStyle = borderColor;
             ctx.lineWidth = 3;  // Thick border
@@ -1336,8 +1389,8 @@ const AI_SPM: React.FC = () => {
   const findSandboxVPC = (nodes: AssetWithMetadata[]): AssetWithMetadata | undefined => {
     return nodes.find(node =>
       node.type === 'VPC' && (
-        (node.metadata.tags?.some((tag: Tag) => tag.Key === 'Name' && tag.Value === 'Sandbox')) ||
-        (node.metadata.tags?.some((tag: Tag) => tag.Key === 'Environment' && tag.Value === 'Sandbox')) ||
+        (node.metadata.tags && (node.metadata.tags as unknown as Record<string, string>)['Name'] === 'Sandbox') ||
+        (node.metadata.tags && (node.metadata.tags as unknown as Record<string, string>)['Environment'] === 'Sandbox') ||
         node.name.includes('Sandbox')
       )
     );
@@ -1371,13 +1424,13 @@ const AI_SPM: React.FC = () => {
       console.log('Starting AI detection...');
       setIsDetecting(true);
       setDetectionError(null);
-      
+
       // Show a temporary notification that auto-dismisses after 5 seconds
       setTempNotification('AI detection started...');
-      
+
       const result = await api.post('/api/ai-detector/detect');
       console.log('AI detection result:', result);
-      
+
       // Refresh the graph data to show updated AI detection results
       await handleRefresh();
     } catch (err) {
@@ -1490,14 +1543,14 @@ const AI_SPM: React.FC = () => {
       {/* Main Content */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
-        <Box sx={{ 
-          p: 2, 
+        <Box sx={{
+          p: 2,
           pr: 6,
-          borderBottom: 1, 
-          borderColor: 'divider', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between' 
+          borderBottom: 1,
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
         }}>
           <Typography variant="h5">Cloud Assets</Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
@@ -1542,10 +1595,10 @@ const AI_SPM: React.FC = () => {
 
         {/* Temporary notification */}
         {tempNotification && (
-          <Box sx={{ 
-            position: 'absolute', 
-            top: 16, 
-            right: 16, 
+          <Box sx={{
+            position: 'absolute',
+            top: 16,
+            right: 16,
             zIndex: 1000,
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
             color: 'white',
@@ -1608,10 +1661,10 @@ const AI_SPM: React.FC = () => {
             <MenuItem onClick={() => handleAIDetails()}>
               View AI Details
             </MenuItem>
-            <MenuItem 
+            <MenuItem
               onClick={() => contextMenu?.node && handleIgnoreToggle(contextMenu.node)}
               disabled={(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId}
-              sx={{ 
+              sx={{
                 color: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'text.disabled' : 'inherit',
                 fontStyle: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'italic' : 'normal',
                 display: 'flex',
@@ -1625,16 +1678,16 @@ const AI_SPM: React.FC = () => {
               )}
               {(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId && ' (Disabled for Sandbox)'}
             </MenuItem>
-            <MenuItem 
+            <MenuItem
               onClick={() => handleFortifAIAction()}
               disabled={(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId}
-              sx={{ 
+              sx={{
                 color: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'text.disabled' : 'inherit',
                 fontStyle: (contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId ? 'italic' : 'normal'
               }}
             >
               <Typography component="span" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-                FortifAI 
+                FortifAI
               </Typography>
               {(contextMenu.node as EC2Node).metadata.vpc_id === sandboxVpcId && ' (Disabled for Sandbox)'}
             </MenuItem>

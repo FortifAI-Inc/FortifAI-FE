@@ -1,84 +1,9 @@
-import { config } from '../config';
-
-export type NodeType = "VPC" | "Subnet" | "EC2" | "S3" | "IAMRole" | "IAMPolicy" | "IAMUser" | "NI" | "SG" | "IGW";
+import { config, API_VERSION } from '../config';
+import { AssetData, GraphData, NodeType, Link } from '../types';
 
 interface AuthResponse {
   access_token: string;
   token_type: string;
-}
-
-export interface AssetData {
-  id: string;
-  name: string;
-  type: NodeType;
-  group: string;
-  val: number;
-  metadata: {
-    asset_type: string;
-    // EC2 fields
-    instance_id?: string;
-    instance_type?: string;
-    state?: string;
-    private_ip_address?: string;
-    public_ip_address?: string;
-    launch_time?: string;
-    network_interfaces?: string[];
-    architecture?: string;
-    platform_details?: string;
-    // VPC fields
-    vpc_id?: string;
-    cidr_block?: string;
-    unique_id?: string;
-    // Subnet fields
-    subnet_id?: string;
-    // S3 fields
-    bucket_name?: string;
-    creation_date?: string;
-    // IGW fields
-    internet_gateway_id?: string;
-    // SG fields
-    group_id?: string;
-    // NI fields
-    network_interface_id?: string;
-    availability_zone?: string;
-    attachment_id?: string;
-    // IAM fields
-    role_id?: string;
-    role_name?: string;
-    assume_role_policy_document?: string;
-    policy_id?: string;
-    policy_name?: string;
-    attachment_count?: number;
-    permissions_boundary_usage_count?: number;
-    document?: string;
-    user_id?: string;
-    user_name?: string;
-    access_key_ids?: string[];
-    attached_policy_names?: string[];
-    inline_policy_names?: string[];
-    is_ai?: boolean;
-    ai_detection_details?: string;
-    is_ignored?: boolean;
-    is_sandbox?: boolean;
-    tags?: { Key: string; Value: string }[];
-  };
-}
-
-export interface Link {
-  source: string;
-  target: string;
-  value: number;
-}
-
-export interface GraphData {
-  nodes: AssetData[];
-  links: Link[];
-  metadata: {
-    totalNodes: number;
-    assetTypes: string[];
-    vpcCount: number;
-    lastUpdate: string;
-  };
 }
 
 export class ApiError extends Error {
@@ -93,7 +18,7 @@ export class ApiError extends Error {
   }
 }
 
-class ApiService {
+export class ApiService {
   private token: string | null = null;
   private isAuthenticating: boolean = false;
 
@@ -150,15 +75,8 @@ class ApiService {
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      // Ensure the request body is properly formatted for sandbox-enforcer endpoints
-      let requestOptions = { ...options };
-      if (endpoint.includes('/sandbox-enforcer/') && options.body) {
-        const body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
-        requestOptions.body = JSON.stringify(body);
-      }
-
       const response = await fetch(url, {
-        ...requestOptions,
+        ...options,
         headers: {
           'Authorization': `Bearer ${this.token}`,
           ...(options.method && options.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
@@ -195,7 +113,7 @@ class ApiService {
 
   private async fetchAssets(assetType: string): Promise<AssetData[]> {
     try {
-      const data = await this.fetchWithAuth(`/data-access/assets/type/${assetType}`);
+      const data = await this.fetchWithAuth(`/api/data-access/assets/type/${assetType}`);
       if (!Array.isArray(data)) {
         console.error(`[API] Invalid response format for ${assetType}:`, data);
         return [];
@@ -266,8 +184,8 @@ class ApiService {
               vpc_id: assetType === 'vpc' 
                 ? asset.metadata?.unique_id || asset.metadata?.vpc_id  // For VPCs, use unique_id or vpc_id
                 : assetType === 'igw'
-                  ? asset.metadata?.vpc_id || asset.metadata?.vpc_id  // For IGWs, use vpc_id or VpcId
-                  : asset.metadata?.vpc_id,    // For other assets, use vpc_id
+                  ? asset.metadata?.vpc_id || asset.metadata?.VpcId  // For IGWs, use vpc_id or VpcId
+                  : asset.metadata?.vpc_id || asset.metadata?.VpcId,    // For other assets, use vpc_id or VpcId
               unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
               // Normalize other fields to underscore case
               instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
@@ -363,7 +281,7 @@ class ApiService {
 
   async refreshGraphData(): Promise<GraphData> {
     try {
-      await this.fetchWithAuth('/data-access/assets/refresh', {
+      await this.fetchWithAuth(`/api/${API_VERSION}/data-access/assets/refresh`, {
         method: 'POST',
       });
       return this.getGraphData();
@@ -375,7 +293,7 @@ class ApiService {
 
   async updateAsset(assetId: string, updates: Partial<AssetData>): Promise<AssetData> {
     try {
-      return await this.fetchWithAuth(`/data-access/assets/${assetId}`, {
+      return await this.fetchWithAuth(`/api/${API_VERSION}/data-access/assets/${assetId}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
       });
@@ -387,7 +305,7 @@ class ApiService {
 
   async fortifaiAction(instanceId: string): Promise<any> {
     try {
-      return await this.fetchWithAuth('/fortifai', {
+      return await this.fetchWithAuth(`/api/${API_VERSION}/sandbox-enforcer/fortifai`, {
         method: 'POST',
         body: JSON.stringify({ instanceId }),
       });
@@ -412,3 +330,4 @@ class ApiService {
 }
 
 export const api = new ApiService();
+export type { AssetData, GraphData, NodeType, Link };
