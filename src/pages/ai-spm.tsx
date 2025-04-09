@@ -1354,11 +1354,14 @@ const AI_SPM: React.FC = () => {
             'state' in node.metadata &&
             (node.metadata as Ec2Metadata).state.toLowerCase() === 'running';
           const isIgnored = (node.metadata as BaseMetadata).is_ignored === true;
+          const isUnmanageable = (node.metadata as BaseMetadata).is_unmanageable === true;
 
-          if (isAI) {
+          if (isAI || isUnmanageable) {
             let borderColor;
 
-            if (isInSandboxVPC) {
+            if (isUnmanageable) {
+              borderColor = 'rgb(0, 0, 255)'; // Blue for unmanageable instances
+            } else if (isInSandboxVPC) {
               borderColor = 'rgb(0, 128, 0)'; // Grass green
             } else if (isIgnored) {
               borderColor = 'rgb(255, 192, 203)'; // Pink
@@ -1377,7 +1380,7 @@ const AI_SPM: React.FC = () => {
               // Draw AI Instance text with matching color
               ctx.fillStyle = borderColor;
               ctx.textAlign = 'center';  // Center the text
-              ctx.fillText('AI Instance', x, y + 65);  // Moved up slightly from 60 to 55
+              ctx.fillText(isUnmanageable ? 'Unmanageable' : 'AI Instance', x, y + 65);  // Moved up slightly from 60 to 55
             }
           }
         }
