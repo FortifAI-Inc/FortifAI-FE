@@ -1,4 +1,18 @@
-export type NodeType = "VPC" | "Subnet" | "EC2" | "S3" | "IAMRole" | "IAMPolicy" | "IAMUser" | "NI" | "SG" | "IGW";
+export type NodeType = 
+  | 'EC2' 
+  | 'VPC' 
+  | 'Subnet' 
+  | 'S3' 
+  | 'IGW' 
+  | 'SG' 
+  | 'NI' 
+  | 'IAMRole' 
+  | 'IAMPolicy' 
+  | 'User'
+  | 'K8sPod'
+  | 'K8sNode'
+  | 'K8sDeployment'
+  | 'K8sService';
 
 export interface Link {
   source: string;

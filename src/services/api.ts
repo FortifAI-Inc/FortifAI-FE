@@ -135,7 +135,11 @@ export class ApiService {
       'iam_role': 'IAMRole',
       'iam_policy': 'IAMPolicy',
       'user': 'IAMUser',
-      'igw': 'IGW'
+      'igw': 'IGW',
+      'k8s_pod': 'K8sPod',
+      'k8s_deployment': 'K8sDeployment',
+      'k8s_service': 'K8sService',
+      'k8s_node': 'K8sNode'
     };
     return typeMapping[assetType] || assetType.toUpperCase() as NodeType;
   }
@@ -150,7 +154,11 @@ export class ApiService {
       'iam_role': 'Administrative',
       'iam_policy': 'Administrative',
       'user': 'Administrative',
-      'igw': 'Networking'
+      'igw': 'Networking',
+      'k8s_pod': 'Kubernetes',
+      'k8s_deployment': 'Kubernetes',
+      'k8s_service': 'Kubernetes',
+      'k8s_node': 'Kubernetes'
     };
     return groupMapping[assetType] || 'Other';
   }
