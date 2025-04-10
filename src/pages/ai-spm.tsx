@@ -582,7 +582,12 @@ const AI_SPM: React.FC = () => {
         iconUrl = '/aws-icons/Amazon-VPC_Subnet_light-bg.svg';
         break;
       case 'EC2':
-        iconUrl = '/aws-icons/Amazon-EC2_light-bg.svg';
+        // Check if this EC2 instance is a Kubernetes node
+        if (node.metadata.is_kubernetes_node) {
+          iconUrl = '/aws-icons/k8s_node.png';
+        } else {
+          iconUrl = '/aws-icons/Compute.png';
+        }
         break;
       case 'SG':
         iconUrl = '/aws-icons/Amazon-VPC_Security-Group_light-bg.svg';
@@ -614,7 +619,9 @@ const AI_SPM: React.FC = () => {
       // Draw the icon onto the main canvas
       ctx.save();
       ctx.translate(x, y);
-      ctx.scale(0.8, 0.8);  // Scale down to fit in the node
+      // Use larger scale for EC2 instances
+      const scale = node.type === 'EC2' ? 1.32 : 0.8;
+      ctx.scale(scale, scale);  // Scale down to fit in the node
       ctx.drawImage(img, -24, -24, 48, 48);
       ctx.restore();
     };

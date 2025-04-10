@@ -9,6 +9,7 @@ export type NodeType =
   | 'IAMRole' 
   | 'IAMPolicy' 
   | 'User'
+  | 'IAMUser'
   | 'K8sPod'
   | 'K8sNode'
   | 'K8sDeployment'

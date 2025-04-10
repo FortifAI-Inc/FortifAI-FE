@@ -50,6 +50,7 @@
     "eslint-config-next": "13.4.1",
     "nodemon": "^2.0.22",
     "react-force-graph-3d": "^1.26.1",
+    "sharp": "^0.34.1",
     "ts-node": "^10.9.1"
   }
 }
