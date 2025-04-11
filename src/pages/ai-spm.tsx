@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Box, Typography, Paper, CircularProgress, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, List, ListItem, ListItemText, Divider, Grid, Card, CardContent, IconButton, Tooltip, Chip, Menu, MenuItem } from '@mui/material';
+import { Box, Typography, Paper, CircularProgress, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, List, ListItem, ListItemText, Divider, Grid, Card, CardContent, IconButton, Tooltip, Chip, Menu, MenuItem, TableContainer, Table, TableHead, TableBody, TableRow, TableCell } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import InfoIcon from '@mui/icons-material/Info';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -117,6 +117,7 @@ interface Node {
   group: string;
   val: number;
   metadata: BaseMetadata;
+  tags?: Tag[];
 }
 
 interface VPCNode extends Node {
@@ -227,6 +228,11 @@ const AI_SPM: React.FC = () => {
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [tempNotification, setTempNotification] = useState<string | null>(null);
+
+  const [selectedK8sNode, setSelectedK8sNode] = useState<EC2Node | null>(null);
+  const [k8sNodePopupOpen, setK8sNodePopupOpen] = useState(false);
+  const [podsData, setPodsData] = useState<any[]>([]);
+  const [isLoadingPods, setIsLoadingPods] = useState(false);
 
   useEffect(() => {
     const img = new Image();
@@ -560,12 +566,9 @@ const AI_SPM: React.FC = () => {
     const displayTitle = title.startsWith('VPC: ') ? title.substring(5) : title;
     ctx.fillText(displayTitle, x + 10, y + 20);
 
-    // Add debug logging
-    console.log(`Drawing frame: ${displayTitle} at (${x}, ${y}) with width ${width} and height ${height}`);
   };
 
   const drawNode = (ctx: CanvasRenderingContext2D, x: number, y: number, node: Node) => {
-    console.debug(`Drawing node: ${node.name} (${node.type}) at position x:${x}, y:${y}`);
 
     const size = 40;
 
@@ -610,12 +613,10 @@ const AI_SPM: React.FC = () => {
       default:
         iconUrl = '/aws-icons/General_light-bg.svg';
     }
-    console.log(`Using icon URL: ${iconUrl}`);
 
     // Load the icon image
     const img = new Image();
     img.onload = () => {
-      console.log(`Icon loaded successfully for ${node.name}`);
       // Draw the icon onto the main canvas
       ctx.save();
       ctx.translate(x, y);
@@ -696,43 +697,36 @@ const AI_SPM: React.FC = () => {
           ctx.strokeStyle = '#808080'; // Light gray
           ctx.lineWidth = 3;
           ctx.strokeRect(x - 24, y - 24, 48, 48);
-          console.log(`Drawing gray border for non-running instance: ${node.name}`);
         }
         break;
       case 'VPC':
         if ('cidr_block' in node.metadata) {
           ctx.fillText(String(node.metadata.cidr_block || ''), x, y + size + 30);
-          console.log(`Drawing VPC CIDR block: ${node.metadata.cidr_block}`);
         }
         break;
       case 'Subnet':
         if ('availability_zone' in node.metadata) {
           ctx.fillText(String(node.metadata.availability_zone || ''), x, y + size + 30);
-          console.log(`Drawing Subnet AZ: ${node.metadata.availability_zone}`);
         }
         break;
       case 'S3':
         if ('creation_date' in node.metadata) {
           const date = new Date(String(node.metadata.creation_date || '')).toLocaleDateString();
           ctx.fillText('Created: ' + date, x, y + size + 30);
-          console.log(`Drawing S3 creation date: ${date}`);
         }
         break;
       case 'SG':
         if ('group_id' in node.metadata) {
           ctx.fillText(String(node.metadata.group_id || ''), x, y + size + 30);
-          console.log(`Drawing SG ID: ${node.metadata.group_id}`);
         }
         break;
       case 'IGW':
         if ('internet_gateway_id' in node.metadata) {
           ctx.fillStyle = '#000000';
           ctx.fillText(String(node.metadata.internet_gateway_id || ''), x, y + size - 10);
-          console.log(`Drawing IGW ID: ${node.metadata.internet_gateway_id}`);
         }
         break;
     }
-    console.log(`Finished drawing node: ${node.name}`);
   };
 
   const drawTooltip = (ctx: CanvasRenderingContext2D, x: number, y: number, text: string) => {
@@ -1042,7 +1036,35 @@ const AI_SPM: React.FC = () => {
     });
 
     if (clickedNode) {
-      setSelectedNode(clickedNode);
+      console.log('Clicked node:', {
+        name: clickedNode.name,
+        type: clickedNode.type,
+        id: clickedNode.id,
+        metadata: clickedNode.metadata
+      });
+
+      // Check if this is a K8s node
+      if (clickedNode.type === 'EC2' && clickedNode.metadata?.is_kubernetes_node) {
+        // Only update if this is a different node than currently selected
+        if (!selectedK8sNode || selectedK8sNode.id !== clickedNode.id) {
+          console.log('Setting new selected K8s node:', clickedNode);
+          setSelectedK8sNode(clickedNode as EC2Node);
+          setK8sNodePopupOpen(true);
+          // Fetch pods data for this node
+          fetchPodsData(clickedNode.id);
+        } else {
+          // If clicking the same node, just toggle the popup
+          setK8sNodePopupOpen(prev => !prev);
+        }
+      } else {
+        // For non-K8s nodes, just set the selected node
+        setSelectedNode(clickedNode);
+      }
+    } else {
+      // Clicked on empty space, clear selection
+      setSelectedNode(null);
+      setSelectedK8sNode(null);
+      setK8sNodePopupOpen(false);
     }
   };
 
@@ -1455,6 +1477,181 @@ const AI_SPM: React.FC = () => {
     }
   };
 
+  const fetchPodsData = async (instanceId: string) => {
+    try {
+      setIsLoadingPods(true);
+      
+      // Get all pods from the graph data
+      const allPods = graphData?.nodes.filter(node => node.type === 'K8sPod') || [];
+      
+      // Debug information
+      console.log('Selected EC2 Node:', {
+        name: selectedK8sNode?.name,
+        id: selectedK8sNode?.id,
+        k8s_node_name: selectedK8sNode?.metadata?.k8s_node_name,
+        metadata: selectedK8sNode?.metadata
+      });
+      
+      // First check if this EC2 instance is a Kubernetes node
+      if (!selectedK8sNode?.metadata?.is_kubernetes_node) {
+        console.log('Selected EC2 instance is not a Kubernetes node');
+        setPodsData([]);
+        return;
+      }
+      
+      // Get the Kubernetes node name from the EC2's metadata
+      const k8sNodeName = selectedK8sNode.metadata.k8s_node_name;
+      
+      if (!k8sNodeName) {
+        console.log('No Kubernetes node name found for EC2 instance');
+        setPodsData([]);
+        return;
+      }
+      
+      // Find all pods that are running on this Kubernetes node
+      const nodePods = allPods.filter(pod => {
+        const podNodeName = pod.metadata?.node_name;
+        
+        /*console.log('Matching pod to K8s node:', {
+          podName: pod.name,
+          podNodeName,
+          k8sNodeName,
+          metadata: pod.metadata,
+          matches: podNodeName === k8sNodeName
+        });*/
+        
+        return podNodeName === k8sNodeName;
+      });
+      
+      console.log('Filtered pods for node:', nodePods.map(pod => ({
+        name: pod.name,
+        nodeName: pod.metadata?.node_name,
+        metadata: pod.metadata
+      })));
+      
+      // Process pods, separating stale and active ones
+      const activePods = nodePods.filter(pod => !pod.metadata?.is_stale);
+      const stalePods = nodePods.filter(pod => pod.metadata?.is_stale);
+      
+      // Format active pods
+      const formattedActivePods = activePods.map(pod => ({
+        name: pod.name,
+        namespace: pod.metadata?.namespace || 'default',
+        status: pod.metadata?.status || 'unknown',
+        node_name: pod.metadata?.node_name,
+        creation_timestamp: pod.metadata?.creation_timestamp || 'unknown',
+        pod_ip: pod.metadata?.pod_ip || 'unknown',
+        is_stale: false
+      }));
+      
+      // Format stale pods
+      const formattedStalePods = stalePods.map(pod => ({
+        name: pod.name,
+        namespace: pod.metadata?.namespace || 'default',
+        status: 'deleted',
+        node_name: pod.metadata?.node_name,
+        creation_timestamp: pod.metadata?.creation_timestamp || 'unknown',
+        pod_ip: 'N/A',
+        is_stale: true
+      }));
+      
+      // Combine active and stale pods, with stale pods at the end
+      setPodsData([...formattedActivePods, ...formattedStalePods]);
+    } catch (error) {
+      console.error('Error processing pods data:', error);
+    } finally {
+      setIsLoadingPods(false);
+    }
+  };
+
+  const renderK8sNodePopup = () => {
+    if (!selectedK8sNode) return null;
+
+    return (
+      <Dialog
+        open={k8sNodePopupOpen}
+        onClose={() => setK8sNodePopupOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Kubernetes Node - {selectedK8sNode.name}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="subtitle1" gutterBottom>
+            Instance ID: {selectedK8sNode.metadata.instance_id}
+          </Typography>
+          <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
+            Running Pods
+          </Typography>
+          {isLoadingPods ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Namespace</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Pod IP</TableCell>
+                    <TableCell>Created</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {podsData.map((pod, index) => (
+                    <TableRow 
+                      key={index}
+                      sx={{ 
+                        backgroundColor: pod.is_stale ? 'rgba(0, 0, 0, 0.04)' : 'inherit',
+                        '&:hover': {
+                          backgroundColor: pod.is_stale ? 'rgba(0, 0, 0, 0.08)' : 'inherit'
+                        }
+                      }}
+                    >
+                      <TableCell>{pod.name}</TableCell>
+                      <TableCell>{pod.namespace}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={pod.status} 
+                          size="small"
+                          color={
+                            pod.status.toLowerCase() === 'running' ? 'success' :
+                            pod.status.toLowerCase() === 'pending' ? 'warning' :
+                            pod.status.toLowerCase() === 'failed' ? 'error' :
+                            pod.status.toLowerCase() === 'deleted' ? 'default' : 'default'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>{pod.pod_ip}</TableCell>
+                      <TableCell>
+                        {pod.creation_timestamp !== 'unknown' 
+                          ? new Date(pod.creation_timestamp).toLocaleString()
+                          : 'unknown'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {podsData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        No pods running on this node
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setK8sNodePopupOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -1704,6 +1901,9 @@ const AI_SPM: React.FC = () => {
           </>
         )}
       </Menu>
+
+      {/* Kubernetes Node Popup */}
+      {renderK8sNodePopup()}
     </Box>
   );
 };

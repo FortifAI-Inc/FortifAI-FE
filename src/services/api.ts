@@ -101,7 +101,21 @@ export class ApiService {
         throw new Error(`API request failed: ${response.statusText}`);
       }
 
-      return response.json();
+      const data = await response.json();
+      
+      // Ensure the response has the correct structure
+      if (Array.isArray(data)) {
+        return data.map(item => ({
+          ...item,
+          tags: item.tags || {},
+          metadata: {
+            ...item.metadata,
+            tags: item.metadata?.tags || {}
+          }
+        }));
+      }
+      
+      return data;
     } catch (error: unknown) {
       clearTimeout(timeoutId);
       if (error instanceof Error && error.name === 'AbortError') {
@@ -118,7 +132,16 @@ export class ApiService {
         console.error(`[API] Invalid response format for ${assetType}:`, data);
         return [];
       }
-      return data;
+      
+      // Ensure each asset has the correct structure
+      return data.map(asset => ({
+        ...asset,
+        tags: asset.tags || {},
+        metadata: {
+          ...asset.metadata,
+          tags: asset.metadata?.tags || {}
+        }
+      }));
     } catch (error) {
       console.error(`[API] Error fetching ${assetType} assets:`, error);
       return [];
@@ -171,8 +194,11 @@ export class ApiService {
 
   async getGraphData(): Promise<GraphData> {
     try {
-      // Fetch all asset types
-      const assetTypes = ['vpc', 'subnet', 'ec2', 'sg', 's3', 'iam_role', 'iam_policy', 'user', 'igw'];
+      // Fetch all asset types including Kubernetes resources
+      const assetTypes = [
+        'vpc', 'subnet', 'ec2', 'sg', 's3', 'iam_role', 'iam_policy', 'user', 'igw',
+        'k8s_pod', 'k8s_node', 'k8s_deployment', 'k8s_service'
+      ];
       const assets: AssetData[] = [];
       
       for (const assetType of assetTypes) {
@@ -180,32 +206,28 @@ export class ApiService {
         
         // Process each asset
         data.forEach(asset => {
-          if (assetType === 'ec2') {
-          }
+          // Debug print to see the structure of the asset
+          /*console.log(`[API Debug] Processing ${assetType} asset:`, {
+            id: asset.id,
+            name: asset.name,
+            metadata: asset.metadata,
+            tags: asset.tags
+          });*/
           
           const processedAsset: AssetData = {
             ...asset,
             metadata: {
               ...asset.metadata,
-              asset_type: assetType,
-              // Normalize VPC ID to underscore case
-              vpc_id: assetType === 'vpc' 
-                ? asset.metadata?.unique_id || asset.metadata?.vpc_id  // For VPCs, use unique_id or vpc_id
-                : assetType === 'igw'
-                  ? asset.metadata?.vpc_id || asset.metadata?.VpcId  // For IGWs, use vpc_id or VpcId
-                  : asset.metadata?.vpc_id || asset.metadata?.VpcId,    // For other assets, use vpc_id or VpcId
+              asset_type: asset.metadata?.asset_type || assetType,
+              vpc_id: asset.metadata?.vpc_id || asset.metadata?.vpc_id,
               unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
-              // Normalize other fields to underscore case
               instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
               instance_type: asset.metadata?.instance_type || asset.metadata?.instance_type,
               private_ip_address: asset.metadata?.private_ip_address || asset.metadata?.private_ip_address,
               public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
               launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
               network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
-              // For subnets, ensure subnet_id is set correctly
-              subnet_id: assetType === 'subnet' 
-                ? asset.metadata?.subnet_id || asset.metadata?.unique_id || asset.id  // For subnets, use subnet_id, unique_id, or id
-                : asset.metadata?.subnet_id,  // For other assets, use subnet_id as is
+              subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
               bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
               creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
               internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
@@ -228,20 +250,10 @@ export class ApiService {
               is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
               ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
               is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
-              is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
-              tags: asset.metadata?.tags
+              tags: asset.tags,
+              is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox
             }
           };
-          
-          if (assetType === 'ec2') {
-            console.error('[API Debug] Processed EC2 asset:', {
-              id: processedAsset.id,
-              name: processedAsset.name,
-              metadata: processedAsset.metadata,
-              vpcId: processedAsset.metadata.vpc_id,
-              subnetId: processedAsset.metadata.subnet_id
-            });
-          }
           
           assets.push(processedAsset);
         });
@@ -258,6 +270,34 @@ export class ApiService {
       }));
       
       const links = this.createLinks(assets);
+      
+      // Match EC2 instances with Kubernetes nodes
+      const ec2Instances = nodes.filter(node => node.type === 'EC2' && node.metadata.is_kubernetes_node);
+      const k8sNodes = nodes.filter(node => node.type === 'K8sNode');
+      //console.error('k8sNodes', k8sNodes);
+      ec2Instances.forEach(ec2 => {
+        // Extract instance ID from the EC2 node ID
+        const instanceId = ec2.id.split('_').pop();
+        
+        // Find matching Kubernetes node by instance ID in tags
+        const matchingK8sNode = k8sNodes.find(k8sNode => {
+          const nodeTags = k8sNode.metadata.tags || {};
+          const nodeInstanceId = nodeTags['alpha.eksctl.io/instance-id'];
+          return nodeInstanceId === instanceId;
+        });
+        
+        if (matchingK8sNode) {
+          // Add the Kubernetes node name to the EC2's metadata
+          ec2.metadata.k8s_node_name = matchingK8sNode.name;
+          
+          console.log('Matched EC2 with K8s node:', {
+            ec2Name: ec2.name,
+            ec2Id: ec2.id,
+            k8sNodeName: matchingK8sNode.name,
+            instanceId
+          });
+        }
+      });
       
       // Log final asset distribution
       console.error('[API Debug] Final asset distribution:', {
@@ -285,6 +325,14 @@ export class ApiService {
       console.error('Error fetching graph data:', error);
       throw error;
     }
+  }
+
+  async getPodsForNode(nodeName: string): Promise<AssetData[]> {
+    return this.fetchWithAuth(`/api/kubernetes/nodes/${nodeName}/pods`);
+  }
+
+  async getKubernetesPods(instanceId: string): Promise<{ pods: any[] }> {
+    return this.fetchWithAuth(`/api/kubernetes/nodes/${instanceId}/pods`);
   }
 
   async refreshGraphData(): Promise<GraphData> {
