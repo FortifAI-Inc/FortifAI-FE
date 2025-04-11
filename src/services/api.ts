@@ -250,6 +250,7 @@ export class ApiService {
               is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
               ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
               is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
+              is_stale: asset.is_stale,
               tags: asset.tags,
               is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox
             }
