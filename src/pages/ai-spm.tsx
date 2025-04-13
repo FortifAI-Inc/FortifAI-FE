@@ -404,20 +404,20 @@ const AI_SPM: React.FC = () => {
   };
 
   const renderVPCSection = (vpc: Node) => {
-    const subnets = graphData?.nodes.filter((node: Node) =>
+    const subnets = (graphData?.nodes.filter((node: Node) =>
       node.type === 'Subnet' &&
       (node as SubnetNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
-    ) || [];
+    ) || []) as SubnetNode[];
 
-    const ec2Instances = graphData?.nodes.filter((node: Node) =>
+    const ec2Instances = (graphData?.nodes.filter((node: Node) =>
       node.type === 'EC2' &&
       (node as EC2Node).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
-    ) || [];
+    ) || []) as EC2Node[];
 
-    const securityGroups = graphData?.nodes.filter((node: Node) =>
+    const securityGroups = (graphData?.nodes.filter((node: Node) =>
       node.type === 'SG' &&
       (node as SGNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
-    ) || [];
+    ) || []) as SGNode[];
 
     return (
       <Card key={vpc.id} sx={{ mb: 2, border: `1px solid ${theme.palette.primary.main}` }}>
@@ -808,16 +808,16 @@ const AI_SPM: React.FC = () => {
 
     // Draw storage section
     drawFrame(ctx, mainFrameX + fixedSectionSpacing, mainFrameY + 30, fixedSectionWidth, fixedSectionHeight, 'Storage', theme.palette.info.main);
-    const s3Buckets = graphData.nodes.filter((node: Node) => node.type === 'S3');
+    const s3Buckets = (graphData.nodes.filter((node: Node) => node.type === 'S3') || []) as S3Node[];
     s3Buckets.forEach((bucket: S3Node, index: number) => {
       drawNode(ctx, mainFrameX + fixedSectionSpacing + (fixedSectionWidth / 2) - ((s3Buckets.length - 1) * 60) + (index * 120), mainFrameY + 80, bucket);
     });
 
     // Draw administrative section
     drawFrame(ctx, mainFrameX + fixedSectionWidth + 2 * fixedSectionSpacing, mainFrameY + 30, fixedSectionWidth, fixedSectionHeight, 'Administrative', theme.palette.grey[700]);
-    const iamResources = graphData.nodes.filter((node: Node) =>
+    const iamResources = (graphData.nodes.filter((node: Node) =>
       ['IAMRole', 'IAMPolicy', 'IAMUser'].includes(node.type)
-    );
+    ) || []) as (IAMRoleNode | IAMPolicyNode | IAMUserNode)[];
 
     // Calculate spacing for even distribution
     const totalWidth = fixedSectionWidth - 40; // Leave 20px padding on each side
@@ -894,7 +894,10 @@ const AI_SPM: React.FC = () => {
       }
 
       // Draw VPC contents
-      const subnets = graphData.nodes.filter(isSubnetNode);
+      const subnets = (graphData?.nodes.filter((node: Node) =>
+        node.type === 'Subnet' &&
+        (node as SubnetNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
+      ) || []) as SubnetNode[];
 
       // Filter subnets for this VPC only
       const vpcSubnets = subnets.filter((subnet: SubnetNode) => {

@@ -72,4 +72,21 @@ export interface AssetData {
   metadata: AssetMetadata;
   tags?: Record<string, string>;
   is_stale?: boolean;
+}
+
+export interface Link {
+  source: string;
+  target: string;
+  value: number;
+}
+
+export interface GraphData {
+  nodes: Node[];
+  links: Link[];
+  metadata: {
+    totalNodes: number;
+    assetTypes: string[];
+    vpcCount: number;
+    lastUpdate: string;
+  };
 } 
