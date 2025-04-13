@@ -59,6 +59,8 @@ export interface AssetMetadata {
   is_ignored?: boolean;
   is_sandbox?: boolean;
   tags?: Record<string, string>;
+  is_kubernetes_node?: boolean;
+  k8s_node_name?: string;
 }
 
 export interface AssetData {
@@ -69,4 +71,5 @@ export interface AssetData {
   val: number;
   metadata: AssetMetadata;
   tags?: Record<string, string>;
+  is_stale?: boolean;
 } 

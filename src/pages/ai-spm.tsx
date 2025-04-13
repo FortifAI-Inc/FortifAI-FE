@@ -30,8 +30,7 @@ import { config, API_VERSION } from '../config';
 import { NodeType } from '../types';
 
 interface Tag {
-  Key: string;
-  Value: string;
+  [key: string]: string;
 }
 
 interface BaseMetadata {
@@ -47,7 +46,7 @@ interface BaseMetadata {
   ai_detection_details?: string;
   is_ignored?: boolean;
   is_sandbox?: boolean;
-  tags?: Tag[];
+  tags?: Tag;
   x?: number;
   y?: number;
   width?: number;
@@ -117,7 +116,7 @@ interface Node {
   group: string;
   val: number;
   metadata: BaseMetadata;
-  tags?: Tag[];
+  tags?: Tag;
 }
 
 interface VPCNode extends Node {
@@ -159,7 +158,7 @@ interface EC2Node extends Node {
     subnet_id: string;
   };
   description?: string;
-  tags?: Tag[];
+  tags?: Tag;
   is_stale?: boolean;
 }
 
@@ -351,17 +350,17 @@ const AI_SPM: React.FC = () => {
               <Divider />
             </React.Fragment>
           ))}
-          {selectedNode.metadata.tags && selectedNode.metadata.tags.length > 0 && (
+          {selectedNode.metadata.tags && Object.keys(selectedNode.metadata.tags).length > 0 && (
             <>
               <ListItem>
                 <ListItemText
                   primary="Tags"
                   secondary={
                     <Box sx={{ mt: 1 }}>
-                      {selectedNode.metadata.tags.map((tag, index) => (
+                      {Object.entries(selectedNode.metadata.tags).map(([tagKey, tagValue]) => (
                         <Chip
-                          key={index}
-                          label={`${tag.Key}: ${tag.Value}`}
+                          key={tagKey}
+                          label={`${tagKey}: ${tagValue}`}
                           size="small"
                           sx={{ mr: 1, mb: 1 }}
                         />
@@ -405,17 +404,17 @@ const AI_SPM: React.FC = () => {
   };
 
   const renderVPCSection = (vpc: Node) => {
-    const subnets = graphData?.nodes.filter(node =>
+    const subnets = graphData?.nodes.filter((node: Node) =>
       node.type === 'Subnet' &&
       (node as SubnetNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
     ) || [];
 
-    const ec2Instances = graphData?.nodes.filter(node =>
+    const ec2Instances = graphData?.nodes.filter((node: Node) =>
       node.type === 'EC2' &&
       (node as EC2Node).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
     ) || [];
 
-    const securityGroups = graphData?.nodes.filter(node =>
+    const securityGroups = graphData?.nodes.filter((node: Node) =>
       node.type === 'SG' &&
       (node as SGNode).metadata.vpc_id === (vpc as VPCNode).metadata.vpc_id
     ) || [];
@@ -445,7 +444,7 @@ const AI_SPM: React.FC = () => {
                 Subnets
               </Typography>
               <Grid container spacing={1}>
-                {subnets.map(subnet => (
+                {subnets.map((subnet: SubnetNode) => (
                   <Grid item xs={12} sm={6} md={4} key={subnet.id}>
                     <Card variant="outlined">
                       <CardContent>
@@ -475,7 +474,7 @@ const AI_SPM: React.FC = () => {
                 EC2 Instances
               </Typography>
               <Grid container spacing={1}>
-                {ec2Instances.map(instance => (
+                {ec2Instances.map((instance: EC2Node) => (
                   <Grid item xs={12} sm={6} md={4} key={instance.id}>
                     <Card variant="outlined">
                       <CardContent>
@@ -506,7 +505,7 @@ const AI_SPM: React.FC = () => {
                 Security Groups
               </Typography>
               <Grid container spacing={1}>
-                {securityGroups.map(sg => (
+                {securityGroups.map((sg: SGNode) => (
                   <Grid item xs={12} sm={6} md={4} key={sg.id}>
                     <Card variant="outlined">
                       <CardContent>
@@ -809,14 +808,14 @@ const AI_SPM: React.FC = () => {
 
     // Draw storage section
     drawFrame(ctx, mainFrameX + fixedSectionSpacing, mainFrameY + 30, fixedSectionWidth, fixedSectionHeight, 'Storage', theme.palette.info.main);
-    const s3Buckets = graphData.nodes.filter(node => node.type === 'S3');
-    s3Buckets.forEach((bucket, index) => {
+    const s3Buckets = graphData.nodes.filter((node: Node) => node.type === 'S3');
+    s3Buckets.forEach((bucket: S3Node, index: number) => {
       drawNode(ctx, mainFrameX + fixedSectionSpacing + (fixedSectionWidth / 2) - ((s3Buckets.length - 1) * 60) + (index * 120), mainFrameY + 80, bucket);
     });
 
     // Draw administrative section
     drawFrame(ctx, mainFrameX + fixedSectionWidth + 2 * fixedSectionSpacing, mainFrameY + 30, fixedSectionWidth, fixedSectionHeight, 'Administrative', theme.palette.grey[700]);
-    const iamResources = graphData.nodes.filter(node =>
+    const iamResources = graphData.nodes.filter((node: Node) =>
       ['IAMRole', 'IAMPolicy', 'IAMUser'].includes(node.type)
     );
 
@@ -825,7 +824,7 @@ const AI_SPM: React.FC = () => {
     const spacing = totalWidth / (iamResources.length + 1); // +1 to account for edges
     const startX = mainFrameX + fixedSectionWidth + 2 * fixedSectionSpacing + 20; // Start from left edge + padding
 
-    iamResources.forEach((resource, index) => {
+    iamResources.forEach((resource: IAMRoleNode | IAMPolicyNode | IAMUserNode, index: number) => {
       const x = startX + (spacing * (index + 1));
       const y = mainFrameY + 80;
       drawNode(ctx, x, y, resource);
@@ -837,7 +836,7 @@ const AI_SPM: React.FC = () => {
     // Log EC2 instances
     const ec2Instances = graphData.nodes.filter(isEC2Node);
 
-    vpcs.forEach((vpc, vpcIndex) => {
+    vpcs.forEach((vpc: VPCNode, vpcIndex: number) => {
       const vpcX = mainFrameX + fixedSectionSpacing + (vpcIndex * ((mainFrameWidth - 2 * fixedSectionSpacing) / vpcs.length));
       const vpcY = mainFrameY + 30 + fixedSectionHeight + fixedSectionSpacing;
 
@@ -876,7 +875,7 @@ const AI_SPM: React.FC = () => {
       vpc.metadata.y = vpcY;
 
       // Check if this VPC has any AI instances
-      const hasAIInstance = graphData.nodes.some(node =>
+      const hasAIInstance = graphData.nodes.some((node: Node) =>
         node.type === 'EC2' &&
         'is_ai' in node.metadata &&
         node.metadata.is_ai &&
@@ -898,7 +897,7 @@ const AI_SPM: React.FC = () => {
       const subnets = graphData.nodes.filter(isSubnetNode);
 
       // Filter subnets for this VPC only
-      const vpcSubnets = subnets.filter(subnet => {
+      const vpcSubnets = subnets.filter((subnet: SubnetNode) => {
         // Get VPC ID from the metadata structure
         const subnetVpcId = subnet.metadata?.vpc_id;
         const vpcId = vpc.metadata?.vpc_id;
@@ -928,19 +927,19 @@ const AI_SPM: React.FC = () => {
       // Draw IGW for this VPC
       const igws = graphData.nodes.filter(isIGWNode);
 
-      const matchingIGWs = igws.filter(igw => {
+      const matchingIGWs = igws.filter((igw: IGWNode) => {
         const matches = igw.metadata.vpc_id === vpc.metadata.vpc_id;
         return matches;
       });
 
-      matchingIGWs.forEach((igw, igwIndex) => {
+      matchingIGWs.forEach((igw: IGWNode, igwIndex: number) => {
         igw.metadata.x = vpcX + (vpc.metadata.width || 0) / 2;
         igw.metadata.y = vpcY + 15; // Position in the middle of the header band (30px height)
         drawNode(ctx, igw.metadata.x, igw.metadata.y, igw);
       });
 
       // Draw subnets for this VPC only
-      vpcSubnets.forEach((subnet, subnetIndex) => {
+      vpcSubnets.forEach((subnet: SubnetNode, subnetIndex: number) => {
         const row = Math.floor(subnetIndex / maxSubnetsPerRow);
         const col = subnetIndex % maxSubnetsPerRow;
 
@@ -957,7 +956,7 @@ const AI_SPM: React.FC = () => {
         drawFrame(ctx, subnetX, subnetY, subnetFrameWidth, subnetFrameHeight, subnetTitle, theme.palette.info.main);
 
         // Draw EC2 instances in the subnet
-        const ec2Instances = graphData.nodes.filter(isEC2Node).filter(instance => {
+        const ec2Instances = graphData.nodes.filter(isEC2Node).filter((instance: EC2Node) => {
           const subnetMetadata = (subnet as SubnetNode).metadata;
           const subnetId = subnetMetadata.subnet_id;
           const instanceSubnetId = instance.metadata.subnet_id;
@@ -990,7 +989,7 @@ const AI_SPM: React.FC = () => {
 
 
           // Draw instances in a grid layout
-          ec2Instances.forEach((instance, index) => {
+          ec2Instances.forEach((instance: EC2Node, index: number) => {
             const row = Math.floor(index / maxInstancesPerRow);
             const col = index % maxInstancesPerRow;
 
@@ -1028,7 +1027,7 @@ const AI_SPM: React.FC = () => {
     const y = event.clientY - rect.top;
 
     // Check if click is on a node
-    const clickedNode = graphData.nodes.find(node => {
+    const clickedNode = graphData.nodes.find((node: Node) => {
       const nodeX = getNodeX(node);
       const nodeY = getNodeY(node);
       const distance = Math.sqrt(Math.pow(x - nodeX, 2) + Math.pow(y - nodeY, 2));
@@ -1083,7 +1082,7 @@ const AI_SPM: React.FC = () => {
     const y = (event.clientY - rect.top) * scaleY;
 
     // Check if hover is on a node
-    const hoveredNode = graphData.nodes.find(node => {
+    const hoveredNode = graphData.nodes.find((node: Node) => {
       const nodeX = getNodeX(node);
       const nodeY = getNodeY(node);
       const distance = Math.sqrt(Math.pow(x - nodeX, 2) + Math.pow(y - nodeY, 2));
@@ -1182,7 +1181,7 @@ const AI_SPM: React.FC = () => {
     const y = event.clientY - rect.top;
 
     // Check if click is on a node
-    const clickedNode = graphData.nodes.find(node => {
+    const clickedNode = graphData.nodes.find((node: Node) => {
       const nodeX = getNodeX(node);
       const nodeY = getNodeY(node);
       const distance = Math.sqrt(Math.pow(x - nodeX, 2) + Math.pow(y - nodeY, 2));
@@ -1261,11 +1260,11 @@ const AI_SPM: React.FC = () => {
       console.log('Ignore toggle response:', response);
 
       // Update the node in the graph
-      setGraphData(prevData => {
+      setGraphData((prevData: GraphData | null) => {
         if (!prevData) return null;
         return {
           ...prevData,
-          nodes: prevData.nodes.map(n =>
+          nodes: prevData.nodes.map((n: Node) =>
             n.id === node.id ? {
               ...n,
               metadata: {
@@ -1330,12 +1329,12 @@ const AI_SPM: React.FC = () => {
   // Update the useEffect that processes VPCs
   useEffect(() => {
     if (graphData) {
-      graphData.nodes.forEach(vpc => {
+      graphData.nodes.forEach((vpc: Node) => {
         if (vpc.type === 'VPC') {
 
           // Initialize tags array if it doesn't exist
           if (!vpc.metadata.tags) {
-            vpc.metadata.tags = [];
+            vpc.metadata.tags = {};
           }
 
           // Handle tags as an object with key-value pairs
@@ -1373,7 +1372,7 @@ const AI_SPM: React.FC = () => {
       const ctx = canvasRef.current.getContext('2d');
       if (!ctx) return;
 
-      graphData.nodes.forEach(node => {
+      graphData.nodes.forEach((node: Node) => {
         if (node.type === 'EC2') {
           const isInSandboxVPC = (node as EC2Node).metadata.vpc_id === sandboxVpcId;
           const isAI = 'is_ai' in node.metadata &&
@@ -1482,7 +1481,7 @@ const AI_SPM: React.FC = () => {
       setIsLoadingPods(true);
       
       // Get all pods from the graph data
-      const allPods = graphData?.nodes.filter(node => node.type === 'K8sPod') || [];
+      const allPods = graphData?.nodes.filter((node: Node) => node.type === 'K8sPod') || [];
       
       // Debug information
       console.log('Selected EC2 Node:', {
@@ -1509,7 +1508,7 @@ const AI_SPM: React.FC = () => {
       }
       
       // Find all pods that are running on this Kubernetes node
-      const nodePods = allPods.filter(pod => {
+      const nodePods = allPods.filter((pod: Node) => {
         const podNodeName = pod.metadata?.node_name;
         
         /*console.log('Matching pod to K8s node:', {
@@ -1523,18 +1522,18 @@ const AI_SPM: React.FC = () => {
         return podNodeName === k8sNodeName;
       });
       
-      console.log('Filtered pods for node:', nodePods.map(pod => ({
+      console.log('Filtered pods for node:', nodePods.map((pod: Node) => ({
         name: pod.name,
         nodeName: pod.metadata?.node_name,
         metadata: pod.metadata
       })));
       
       // Process pods, separating stale and active ones
-      const activePods = nodePods.filter(pod => !pod.metadata?.is_stale);
-      const stalePods = nodePods.filter(pod => pod.metadata?.is_stale);
+      const activePods = nodePods.filter((pod: Node) => !pod.metadata?.is_stale);
+      const stalePods = nodePods.filter((pod: Node) => pod.metadata?.is_stale);
       
       // Format active pods
-      const formattedActivePods = activePods.map(pod => ({
+      const formattedActivePods = activePods.map((pod: Node) => ({
         name: pod.name,
         namespace: pod.metadata?.namespace || 'default',
         status: pod.metadata?.status || 'unknown',
@@ -1545,7 +1544,7 @@ const AI_SPM: React.FC = () => {
       }));
       
       // Format stale pods
-      const formattedStalePods = stalePods.map(pod => ({
+      const formattedStalePods = stalePods.map((pod: Node) => ({
         name: pod.name,
         namespace: pod.metadata?.namespace || 'default',
         status: 'deleted',
@@ -1673,8 +1672,8 @@ const AI_SPM: React.FC = () => {
   }
 
   const vpcs = graphData.nodes.filter(isVPCNode);
-  const s3Buckets = graphData.nodes.filter(node => node.type === 'S3');
-  const iamResources = graphData.nodes.filter(node =>
+  const s3Buckets = graphData.nodes.filter((node: Node) => node.type === 'S3');
+  const iamResources = graphData.nodes.filter((node: Node) =>
     ['IAMRole', 'IAMPolicy', 'IAMUser'].includes(node.type)
   );
 
@@ -1687,7 +1686,7 @@ const AI_SPM: React.FC = () => {
           <ListItem>
             <ListItemText
               primary="Compute"
-              secondary={`${graphData.nodes.filter(n => n.group === 'Compute').length} assets`}
+              secondary={`${graphData.nodes.filter((n: Node) => n.group === 'Compute').length} assets`}
               primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center' } }}
             />
             <ComputerIcon sx={{ ml: 1, color: theme.palette.success.main }} />
@@ -1695,7 +1694,7 @@ const AI_SPM: React.FC = () => {
           <ListItem>
             <ListItemText
               primary="Networking"
-              secondary={`${graphData.nodes.filter(n => n.group === 'Networking').length} assets`}
+              secondary={`${graphData.nodes.filter((n: Node) => n.group === 'Networking').length} assets`}
               primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center' } }}
             />
             <AccountTreeIcon sx={{ ml: 1, color: theme.palette.warning.main }} />
@@ -1703,7 +1702,7 @@ const AI_SPM: React.FC = () => {
           <ListItem>
             <ListItemText
               primary="Storage"
-              secondary={`${graphData.nodes.filter(n => n.group === 'Storage').length} assets`}
+              secondary={`${graphData.nodes.filter((n: Node) => n.group === 'Storage').length} assets`}
               primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center' } }}
             />
             <StorageIcon sx={{ ml: 1, color: theme.palette.info.main }} />
@@ -1711,7 +1710,7 @@ const AI_SPM: React.FC = () => {
           <ListItem>
             <ListItemText
               primary="Administrative"
-              secondary={`${graphData.nodes.filter(n => n.group === 'Administrative').length} assets`}
+              secondary={`${graphData.nodes.filter((n: Node) => n.group === 'Administrative').length} assets`}
               primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center' } }}
             />
             <SecurityIcon sx={{ ml: 1, color: theme.palette.grey[700] }} />
