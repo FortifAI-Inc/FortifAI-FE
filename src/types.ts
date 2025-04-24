@@ -61,6 +61,35 @@ export interface AssetMetadata {
   tags?: Record<string, string>;
   is_kubernetes_node?: boolean;
   k8s_node_name?: string;
+  // Kubernetes pod specific fields
+  namespace?: string;
+  status?: string;
+  node_name?: string;
+  pod_ip?: string;
+  creation_timestamp?: string;
+  containers?: string[];
+  labels?: Record<string, string>;
+  annotations?: Record<string, string>;
+  conditions?: any[];
+  container_statuses?: any[];
+  host_ip?: string;
+  qos_class?: string;
+  resource_details?: any[];
+  is_llm?: boolean;
+  ai_detection_confidence?: number;
+  ai_detected_frameworks?: string[];
+  ai_detected_services?: string[];
+  ai_indicators?: {
+    processes?: string[];
+    packages?: string[];
+    env_vars?: string[];
+    files?: string[];
+    network?: string[];
+  };
+  ai_risk_assessment?: {
+    level?: string;
+    factors?: string[];
+  };
 }
 
 export interface AssetData {
