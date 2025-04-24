@@ -1033,20 +1033,12 @@ const AI_SPM: React.FC = () => {
 
       // Check if this is a K8s node
       if (node.type === 'EC2' && node.metadata?.is_kubernetes_node) {
-        // Only update if this is a different node than currently selected
-        if (!selectedK8sNode || selectedK8sNode.id !== node.id) {
-          console.log('Setting new selected K8s node:', node);
-          // First set the state
-          setSelectedK8sNode(node);
-          // Then fetch pods data after a small delay to ensure state is updated
-          setTimeout(() => {
-            fetchPodsData(node.id);
-          }, 0);
-          setK8sNodePopupOpen(true);
-        } else {
-          // If clicking the same node, just toggle the popup
-          setK8sNodePopupOpen(prev => !prev);
-        }
+        // Set the selected node and open popup
+        setSelectedK8sNode(node);
+        setK8sNodePopupOpen(true);
+        
+        // Fetch pods data with the node directly
+        fetchPodsData(node);
       } else {
         // For non-K8s nodes, just set the selected node
         setSelectedNode(node);
@@ -1221,8 +1213,12 @@ const AI_SPM: React.FC = () => {
   };
 
   const handlePodAIDetails = (pod: any) => {
-       
     let detailsText = '';
+    
+    // Add AI classification
+    detailsText += `AI Classification:\n`;
+    detailsText += `Is AI: ${pod.is_ai ? 'Yes' : 'No'}\n`;
+    detailsText += `Is LLM: ${pod.is_llm ? 'Yes' : 'No'}\n\n`;
     
     // Add confidence information
     if (pod.ai_detection_confidence) {
@@ -1513,7 +1509,7 @@ const AI_SPM: React.FC = () => {
     }
   };
 
-  const fetchPodsData = async (instanceId: string) => {
+  const fetchPodsData = async (node: Node) => {
     try {
       setIsLoadingPods(true);
       
@@ -1521,22 +1517,15 @@ const AI_SPM: React.FC = () => {
       const allPods = graphData?.nodes.filter((node: Node) => node.type === 'K8sPod') || [];
       
       // Debug information
-      console.log('Selected EC2 Node:', {
-        name: selectedK8sNode?.name,
-        id: selectedK8sNode?.id,
-        k8s_node_name: selectedK8sNode?.metadata?.k8s_node_name,
-        metadata: selectedK8sNode?.metadata
+      console.log('Processing node:', {
+        name: node.name,
+        id: node.id,
+        k8s_node_name: node.metadata?.k8s_node_name,
+        metadata: node.metadata
       });
       
-      // First check if this EC2 instance is a Kubernetes node
-      if (!selectedK8sNode?.metadata?.is_kubernetes_node) {
-        console.log('Selected EC2 instance is not a Kubernetes node');
-        setPodsData([]);
-        return;
-      }
-      
-      // Get the Kubernetes node name from the EC2's metadata
-      const k8sNodeName = selectedK8sNode.metadata.k8s_node_name?.trim();
+      // Get the Kubernetes node name from the node's metadata
+      const k8sNodeName = node.metadata?.k8s_node_name?.trim();
       
       if (!k8sNodeName) {
         console.log('No Kubernetes node name found for EC2 instance');
@@ -1548,7 +1537,7 @@ const AI_SPM: React.FC = () => {
       const nodePods = allPods.filter((pod: Node) => {
         const podNodeName = pod.metadata?.node_name?.trim();
         const matches = podNodeName?.toLowerCase() === k8sNodeName.toLowerCase();
-        //console.log(`Pod ${pod.name} node name: ${podNodeName}, matches: ${matches}`);
+        console.log(`Pod ${pod.name} node name: ${podNodeName}, matches: ${matches}`);
         return matches;
       });
       
@@ -1565,7 +1554,7 @@ const AI_SPM: React.FC = () => {
       // Format active pods
       const formattedActivePods = activePods.map((pod: Node) => {
         const metadata = pod.metadata || {};
-        const formattedPod = {
+        return {
           name: pod.name,
           namespace: metadata.namespace || 'default',
           status: metadata.status || 'unknown',
@@ -1582,15 +1571,12 @@ const AI_SPM: React.FC = () => {
           ai_indicators: metadata.ai_indicators || {},
           ai_risk_assessment: metadata.ai_risk_assessment || {}
         };
-        
-        
-        return formattedPod;
       });
       
       // Format stale pods
       const formattedStalePods = stalePods.map((pod: Node) => {
         const metadata = pod.metadata || {};
-        const formattedPod = {
+        return {
           name: pod.name,
           namespace: metadata.namespace || 'default',
           status: 'deleted',
@@ -1607,9 +1593,6 @@ const AI_SPM: React.FC = () => {
           ai_indicators: metadata.ai_indicators || {},
           ai_risk_assessment: metadata.ai_risk_assessment || {}
         };
-        
-        
-        return formattedPod;
       });
       
       // Combine active and stale pods, with stale pods at the end
@@ -1768,20 +1751,12 @@ const AI_SPM: React.FC = () => {
 
       // Check if this is a K8s node
       if (clickedNode.type === 'EC2' && clickedNode.metadata?.is_kubernetes_node) {
-        // Only update if this is a different node than currently selected
-        if (!selectedK8sNode || selectedK8sNode.id !== clickedNode.id) {
-          console.log('Setting new selected K8s node:', clickedNode);
-          // First set the state
-          setSelectedK8sNode(clickedNode);
-          // Then fetch pods data after a small delay to ensure state is updated
-          setTimeout(() => {
-            fetchPodsData(clickedNode.id);
-          }, 0);
-          setK8sNodePopupOpen(true);
-        } else {
-          // If clicking the same node, just toggle the popup
-          setK8sNodePopupOpen(prev => !prev);
-        }
+        // Set the selected node and open popup
+        setSelectedK8sNode(clickedNode);
+        setK8sNodePopupOpen(true);
+        
+        // Fetch pods data with the node directly
+        fetchPodsData(clickedNode);
       } else {
         // For non-K8s nodes, just set the selected node
         setSelectedNode(clickedNode);
