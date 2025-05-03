@@ -1186,29 +1186,41 @@ const AI_SPM: React.FC = () => {
   };
 
   const handleAIDetails = () => {
-    if (!contextMenu?.node) return;
-    const instance = contextMenu.node as EC2Node;
-    if (instance.metadata.ai_detection_details) {
-      // Create a formatted details string that includes the confidence value and final verdict
-      let detailsText = '';
-
-      // Add confidence information if available
-      if ('ai_detection_confidence' in instance.metadata &&
-        typeof instance.metadata.ai_detection_confidence === 'number') {
-        const confidencePercent = (instance.metadata.ai_detection_confidence * 100).toFixed(1);
-        const isAI = instance.metadata.is_ai && instance.metadata.ai_detection_confidence > 0.8;
-        detailsText = `Confidence: ${confidencePercent}%\n`;
-        detailsText += `Final Verdict: ${isAI ? 'AI Instance' : 'Not an AI Instance'}\n\n`;
-      }
-
-      // Add detection details
-      detailsText += instance.metadata.ai_detection_details;
-
-      setAiDetailsDialog({
-        open: true,
-        details: detailsText
-      });
+    console.log('handleAIDetails called with contextMenu:', contextMenu);
+    if (!contextMenu?.node) {
+      console.log('No node in context menu');
+      return;
     }
+    
+    const instance = contextMenu.node as EC2Node;
+    console.log('Instance metadata:', instance.metadata);
+    
+    // Create a formatted details string that includes the confidence value and final verdict
+    let detailsText = '';
+
+    // Add confidence information if available
+    if ('ai_detection_confidence' in instance.metadata &&
+      typeof instance.metadata.ai_detection_confidence === 'number') {
+      const confidencePercent = (instance.metadata.ai_detection_confidence * 100).toFixed(1);
+      const isAI = instance.metadata.is_ai && instance.metadata.ai_detection_confidence > 0.8;
+      detailsText = `Confidence: ${confidencePercent}%\n`;
+      detailsText += `Final Verdict: ${isAI ? 'AI Instance' : 'Not an AI Instance'}\n\n`;
+    }
+
+    // Add detection details
+    if (instance.metadata.ai_detection_details) {
+      detailsText += instance.metadata.ai_detection_details;
+    } else {
+      detailsText += 'No AI detection details available';
+    }
+
+    console.log('Setting AI details dialog with text:', detailsText);
+    setAiDetailsDialog({
+      open: true,
+      details: detailsText,
+      title: `AI Analysis Details for ${instance.name}`
+    });
+    
     handleContextMenuClose();
   };
 
@@ -1918,6 +1930,41 @@ const AI_SPM: React.FC = () => {
             style={{ cursor: 'default' }}
           />
         </Box>
+
+        {/* Context Menu */}
+        <Menu
+          open={contextMenu !== null}
+          onClose={handleContextMenuClose}
+          anchorReference="anchorPosition"
+          anchorPosition={
+            contextMenu !== null
+              ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+              : undefined
+          }
+        >
+          <MenuItem onClick={handleAIDetails}>View AI Details</MenuItem>
+          <MenuItem onClick={handleFortifAIAction}>Move to Sandbox</MenuItem>
+        </Menu>
+
+        {/* AI Details Dialog */}
+        <Dialog
+          open={aiDetailsDialog.open}
+          onClose={() => setAiDetailsDialog({ open: false, details: '' })}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>{aiDetailsDialog.title || 'AI Analysis Details'}</DialogTitle>
+          <DialogContent>
+            <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>
+              {aiDetailsDialog.details}
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAiDetailsDialog({ open: false, details: '' })}>
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
 
       {/* Node Popup */}
