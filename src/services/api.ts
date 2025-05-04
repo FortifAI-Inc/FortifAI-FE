@@ -206,13 +206,19 @@ export class ApiService {
         
         // Process each asset
         data.forEach(asset => {
-          // Debug print to see the structure of the asset
-          /*console.log(`[API Debug] Processing ${assetType} asset:`, {
-            id: asset.id,
-            name: asset.name,
-            metadata: asset.metadata,
-            tags: asset.tags
-          });*/
+          // Add debug logging for EC2 instances
+          if (assetType === 'ec2') {
+            console.log('Processing EC2 asset:', {
+              id: asset.id,
+              name: asset.name,
+              metadata: {
+                instance_id: asset.metadata?.instance_id,
+                unique_id: asset.metadata?.unique_id,
+                has_flow_logs: asset.metadata?.has_flow_logs
+              },
+              raw_metadata: asset.metadata
+            });
+          }
           
           const processedAsset: AssetData = {
             ...asset,
@@ -252,7 +258,8 @@ export class ApiService {
               ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
               is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
               tags: asset.tags,
-              is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox
+              is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
+              has_flow_logs: asset.metadata?.has_flow_logs || false
             }
           };
           
@@ -261,14 +268,50 @@ export class ApiService {
       }
       
       // Create nodes and links
-      const nodes = assets.map(asset => ({
-        id: asset.id,
-        name: asset.name,
-        type: this.getNodeType(asset.metadata.asset_type),
-        group: this.getAssetGroup(asset.metadata.asset_type),
-        val: 1,
-        metadata: asset.metadata
-      }));
+      const nodes = assets.map(asset => {
+        // Add debug logging for EC2 nodes
+        if (asset.metadata.asset_type === 'ec2') {
+          console.log('Creating EC2 node:', {
+            id: asset.id,
+            name: asset.name,
+            metadata: {
+              instance_id: asset.metadata.instance_id,
+              unique_id: asset.metadata.unique_id,
+              has_flow_logs: asset.metadata.has_flow_logs
+            },
+            raw_metadata: asset.metadata
+          });
+        }
+
+        return {
+          id: asset.id,
+          name: asset.name,
+          type: this.getNodeType(asset.metadata.asset_type),
+          group: this.getAssetGroup(asset.metadata.asset_type),
+          val: 1,
+          metadata: {
+            ...asset.metadata,
+            // Ensure EC2-specific fields are properly set
+            ...(asset.metadata.asset_type === 'ec2' ? {
+              instance_id: asset.metadata.instance_id,
+              instance_type: asset.metadata.instance_type,
+              state: asset.metadata.state,
+              private_ip_address: asset.metadata.private_ip_address,
+              public_ip_address: asset.metadata.public_ip_address,
+              launch_time: asset.metadata.launch_time,
+              network_interfaces: asset.metadata.network_interfaces || [],
+              architecture: asset.metadata.architecture,
+              platform_details: asset.metadata.platform_details,
+              vpc_id: asset.metadata.vpc_id,
+              subnet_id: asset.metadata.subnet_id,
+              has_flow_logs: asset.metadata.has_flow_logs || false,
+              is_ai: asset.metadata.is_ai || false,
+              ai_detection_details: asset.metadata.ai_detection_details || '',
+              ai_detection_confidence: asset.metadata.ai_detection_confidence || 0
+            } : {})
+          }
+        };
+      });
       
       const links = this.createLinks(assets);
       
@@ -338,7 +381,7 @@ export class ApiService {
 
   async refreshGraphData(): Promise<GraphData> {
     try {
-      await this.fetchWithAuth(`/api/${API_VERSION}/data-access/assets/refresh`, {
+      await this.fetchWithAuth('/api/data-access/assets/refresh', {
         method: 'POST',
       });
       return this.getGraphData();
@@ -383,6 +426,20 @@ export class ApiService {
       console.error(`Failed to make POST request to ${endpoint}:`, error);
       throw error;
     }
+  }
+
+  async activateFlowLogs(instanceId: string): Promise<any> {
+    console.log('Calling activateFlowLogs API for instance:', instanceId);
+    const response = await this.post('/api/assets-monitor/api/v1/activate_flowlog_ec2', { instance_id: instanceId });
+    console.log('activateFlowLogs API response:', response);
+    return response;
+  }
+
+  async deactivateFlowLogs(instanceId: string): Promise<any> {
+    console.log('Calling deactivateFlowLogs API for instance:', instanceId);
+    const response = await this.post('/api/assets-monitor/api/v1/deactivate_flowlog_ec2', { instance_id: instanceId });
+    console.log('deactivateFlowLogs API response:', response);
+    return response;
   }
 }
 

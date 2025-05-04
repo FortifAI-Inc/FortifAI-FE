@@ -74,6 +74,7 @@ interface Ec2Metadata extends BaseMetadata {
   ai_detection_details: string;
   ai_detection_confidence: number;
   ai_detected_processes: string[];
+  has_flow_logs: boolean;
 }
 
 interface SubnetMetadata extends BaseMetadata {
@@ -144,19 +145,7 @@ interface IGWNode extends Node {
 
 interface EC2Node extends Node {
   type: 'EC2';
-  metadata: BaseMetadata & {
-    instance_id: string;
-    instance_type: string;
-    state: string;
-    private_ip_address: string;
-    public_ip_address: string;
-    launch_time: string;
-    network_interfaces: string[];
-    architecture: string;
-    platform_details: string;
-    vpc_id: string;
-    subnet_id: string;
-  };
+  metadata: Ec2Metadata;
   description?: string;
   tags?: Tag;
   is_stale?: boolean;
@@ -1781,6 +1770,80 @@ const AI_SPM: React.FC = () => {
     }
   };
 
+  const handleFlowLogToggle = async () => {
+    if (!contextMenu?.node) return;
+
+    // Ensure we're dealing with an EC2 node
+    if (contextMenu.node.type !== 'EC2') {
+      console.error('Not an EC2 node:', contextMenu.node);
+      setDetectionError('Invalid node type');
+      handleContextMenuClose();
+      return;
+    }
+
+    const node = contextMenu.node as EC2Node;
+    
+    // Add detailed logging
+    console.log('Flow log toggle clicked - Full node details:', {
+      node_type: node.type,
+      node_id: node.id,
+      node_name: node.name,
+      full_metadata: node.metadata,
+      instance_id: node.metadata.instance_id,
+      unique_id: node.metadata.unique_id
+    });
+
+    // Extract instance ID from either metadata or node ID
+    let instanceId = node.metadata.instance_id;
+    if (!instanceId && node.id.startsWith('AssetType.ec2_')) {
+      instanceId = node.id.substring('AssetType.ec2_'.length);
+      console.log('Extracted instance ID from node ID:', instanceId);
+    }
+
+    const hasFlowLogs = node.metadata.has_flow_logs;
+
+    if (!instanceId) {
+      console.error('No instance ID found in node metadata or ID:', node);
+      setDetectionError('Failed to get instance ID');
+      handleContextMenuClose();
+      return;
+    }
+
+    try {
+      setTempNotification(hasFlowLogs ? 'Deactivating flow logs...' : 'Activating flow logs...');
+      handleContextMenuClose();
+
+      if (hasFlowLogs) {
+        console.log('Deactivating flow logs for instance:', instanceId);
+        await api.deactivateFlowLogs(instanceId);
+      } else {
+        console.log('Activating flow logs for instance:', instanceId);
+        await api.activateFlowLogs(instanceId);
+      }
+      
+      // Update the node's metadata in the graph data
+      setGraphData((prevData: GraphData | null) => {
+        if (!prevData) return null;
+        return {
+          ...prevData,
+          nodes: prevData.nodes.map((n: Node) =>
+            n.id === node.id ? {
+              ...n,
+              metadata: {
+                ...n.metadata,
+                has_flow_logs: !hasFlowLogs
+              }
+            } : n
+          ),
+          links: prevData.links
+        };
+      });
+    } catch (err) {
+      console.error('Error toggling flow logs:', err);
+      setDetectionError(err instanceof Error ? err.message : 'Failed to toggle flow logs');
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -1944,6 +2007,10 @@ const AI_SPM: React.FC = () => {
         >
           <MenuItem onClick={handleAIDetails}>View AI Details</MenuItem>
           <MenuItem onClick={handleFortifAIAction}>Move to Sandbox</MenuItem>
+          <Divider />
+          <MenuItem onClick={handleFlowLogToggle}>
+            {contextMenu?.node?.metadata.has_flow_logs ? 'Disable Flow Logs' : 'Enable Flow Logs'}
+          </MenuItem>
         </Menu>
 
         {/* AI Details Dialog */}
