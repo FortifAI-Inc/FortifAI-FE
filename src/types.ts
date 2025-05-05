@@ -61,6 +61,10 @@ export interface AssetMetadata {
   tags?: Record<string, string>;
   is_kubernetes_node?: boolean;
   k8s_node_name?: string;
+  has_flow_logs?: boolean;
+  state?: string;
+  architecture?: string;
+  platform_details?: string;
   // Kubernetes pod specific fields
   namespace?: string;
   status?: string;
