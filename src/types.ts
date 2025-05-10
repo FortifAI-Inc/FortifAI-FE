@@ -22,6 +22,7 @@ export interface Node {
   val: number;
   metadata: AssetMetadata;
   tags?: Record<string, string>;
+  is_stale?: boolean;
 }
 
 export interface AssetMetadata {
@@ -94,16 +95,15 @@ export interface AssetMetadata {
     level?: string;
     factors?: string[];
   };
+  is_stale?: boolean;
 }
 
 export interface AssetData {
-  id: string;
+  unique_id: string;
   name: string;
-  type: string;
-  group: string;
-  val: number;
+  description: string;
   metadata: AssetMetadata;
-  tags?: Record<string, string>;
+  tags: Record<string, string>;
   is_stale?: boolean;
 }
 

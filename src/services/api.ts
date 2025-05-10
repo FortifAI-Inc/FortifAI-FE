@@ -206,23 +206,11 @@ export class ApiService {
         
         // Process each asset
         data.forEach(asset => {
-          // Add debug logging for EC2 instances
-          if (assetType === 'ec2') {
-            console.log('Processing EC2 asset:', {
-              id: asset.id,
-              name: asset.name,
-              metadata: {
-                instance_id: asset.metadata?.instance_id,
-                unique_id: asset.metadata?.unique_id,
-                has_flow_logs: asset.metadata?.has_flow_logs
-              },
-              raw_metadata: asset.metadata
-            });
-          }
-          
+          // Debug print for k8s_pod assets
+
           const processedAsset: AssetData = {
             ...asset,
-            is_stale: asset.is_stale,
+            is_stale: asset.is_stale || false,  // Ensure is_stale is always defined
             metadata: {
               ...asset.metadata,
               asset_type: asset.metadata?.asset_type || assetType,
@@ -270,21 +258,9 @@ export class ApiService {
       // Create nodes and links
       const nodes = assets.map(asset => {
         // Add debug logging for EC2 nodes
-        if (asset.metadata.asset_type === 'ec2') {
-          console.log('Creating EC2 node:', {
-            id: asset.id,
-            name: asset.name,
-            metadata: {
-              instance_id: asset.metadata.instance_id,
-              unique_id: asset.metadata.unique_id,
-              has_flow_logs: asset.metadata.has_flow_logs
-            },
-            raw_metadata: asset.metadata
-          });
-        }
 
         return {
-          id: asset.id,
+          id: asset.unique_id,
           name: asset.name,
           type: this.getNodeType(asset.metadata.asset_type),
           group: this.getAssetGroup(asset.metadata.asset_type),
@@ -309,7 +285,8 @@ export class ApiService {
               ai_detection_details: asset.metadata.ai_detection_details || '',
               ai_detection_confidence: asset.metadata.ai_detection_confidence || 0
             } : {})
-          }
+          },
+          is_stale: asset.is_stale
         };
       });
       
@@ -372,7 +349,20 @@ export class ApiService {
   }
 
   async getPodsForNode(nodeName: string): Promise<AssetData[]> {
-    return this.fetchWithAuth(`/api/kubernetes/nodes/${nodeName}/pods`);
+    const response = await this.fetchWithAuth(`/api/kubernetes/nodes/${nodeName}/pods`);
+    console.log('Raw pod response:', response);
+    
+    // Ensure each pod has the correct structure and preserve is_stale flag
+    return response.map((pod: AssetData) => ({
+      ...pod,
+      is_stale: pod.is_stale || false,
+      tags: pod.tags || {},
+      metadata: {
+        ...pod.metadata,
+        tags: pod.metadata?.tags || {},
+        is_stale: pod.is_stale || false
+      }
+    }));
   }
 
   async getKubernetesPods(instanceId: string): Promise<{ pods: any[] }> {
@@ -444,4 +434,4 @@ export class ApiService {
 }
 
 export const api = new ApiService();
-export type { AssetData, GraphData, NodeType, Link };
+export type { GraphData, NodeType, Link };

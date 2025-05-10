@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Box, Typography, Paper, CircularProgress, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, List, ListItem, ListItemText, Divider, Grid, Card, CardContent, IconButton, Tooltip, Chip, Menu, MenuItem, TableContainer, Table, TableHead, TableBody, TableRow, TableCell } from '@mui/material';
+import { Box, Typography, Paper, CircularProgress, Alert, Dialog, DialogTitle, DialogContent, DialogActions, Button, List, ListItem, ListItemText, Divider, Grid, Card, CardContent, IconButton, Tooltip, Chip, Menu, MenuItem, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, FormControlLabel, Switch } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import InfoIcon from '@mui/icons-material/Info';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -23,11 +23,12 @@ import {
   IAMUserIcon
 } from 'react-aws-icons';
 import ReactDOM from 'react-dom';
-import { api, AssetData, GraphData, Link } from '../services/api';
+import { api, GraphData, Link } from '../services/api';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 import { config, API_VERSION } from '../config';
 import { NodeType } from '../types';
+import { AssetData } from '../types';
 
 interface Tag {
   [key: string]: string;
@@ -116,8 +117,17 @@ interface Node {
   type: NodeType;
   group: string;
   val: number;
-  metadata: BaseMetadata;
-  tags?: Tag;
+  metadata: {
+    asset_type: string;
+    is_stale?: boolean;
+    node_name?: string;
+    namespace?: string;
+    status?: string;
+    is_ai?: boolean;
+    ai_detection_details?: string;
+    [key: string]: any;
+  };
+  is_stale?: boolean;
 }
 
 interface VPCNode extends Node {
@@ -192,6 +202,7 @@ const AI_SPM: React.FC = () => {
     mouseX: number;
     mouseY: number;
     node: Node | null;
+    stalePods?: any[];
   } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const theme = useTheme();
@@ -220,8 +231,7 @@ const AI_SPM: React.FC = () => {
 
   const [selectedK8sNode, setSelectedK8sNode] = useState<Node | null>(null);
   const [k8sNodePopupOpen, setK8sNodePopupOpen] = useState(false);
-  const [podsData, setPodsData] = useState<any[]>([]);
-  const [isLoadingPods, setIsLoadingPods] = useState(false);
+  const [showAllPods, setShowAllPods] = useState(false);
 
   useEffect(() => {
     const img = new Image();
@@ -241,7 +251,7 @@ const AI_SPM: React.FC = () => {
 
         // Ensure all subnets have the proper metadata structure
         if (data && data.nodes) {
-          data.nodes.forEach((node: AssetWithMetadata) => {
+          data.nodes.forEach((node: Node) => {
             if (node.type === 'Subnet') {
               // Ensure metadata exists
               if (!node.metadata) {
@@ -1013,27 +1023,15 @@ const AI_SPM: React.FC = () => {
 
   const handleNodeClick = (node: Node) => {
     if (node) {
-      console.log('Clicked node:', {
-        name: node.name,
-        type: node.type,
-        id: node.id,
-        metadata: node.metadata
-      });
-
       // Check if this is a K8s node
       if (node.type === 'EC2' && node.metadata?.is_kubernetes_node) {
-        // Set the selected node and open popup
         setSelectedK8sNode(node);
         setK8sNodePopupOpen(true);
-        
-        // Fetch pods data with the node directly
-        fetchPodsData(node);
+        setShowAllPods(false); // Reset toggle when opening a new node popup
       } else {
-        // For non-K8s nodes, just set the selected node
         setSelectedNode(node);
       }
     } else {
-      // Clicked on empty space, clear selection
       setSelectedNode(null);
       setSelectedK8sNode(null);
       setK8sNodePopupOpen(false);
@@ -1175,14 +1173,9 @@ const AI_SPM: React.FC = () => {
   };
 
   const handleAIDetails = () => {
-    console.log('handleAIDetails called with contextMenu:', contextMenu);
-    if (!contextMenu?.node) {
-      console.log('No node in context menu');
-      return;
-    }
+    if (!contextMenu?.node) return;
     
     const instance = contextMenu.node as EC2Node;
-    console.log('Instance metadata:', instance.metadata);
     
     // Create a formatted details string that includes the confidence value and final verdict
     let detailsText = '';
@@ -1203,7 +1196,6 @@ const AI_SPM: React.FC = () => {
       detailsText += 'No AI detection details available';
     }
 
-    console.log('Setting AI details dialog with text:', detailsText);
     setAiDetailsDialog({
       open: true,
       details: detailsText,
@@ -1284,14 +1276,8 @@ const AI_SPM: React.FC = () => {
         }]
       };
 
-      console.log('Sending ignore toggle request with payload:', JSON.stringify(updatePayload, null, 2));
-      console.log('Current node metadata:', JSON.stringify(node.metadata, null, 2));
-      console.log('Current is_ignored value:', (node.metadata as BaseMetadata).is_ignored);
-      console.log('New is_ignored value:', !(node.metadata as BaseMetadata).is_ignored);
-
       // Update the asset in the backend using batch endpoint
       const response = await api.post(`/api/data-access/assets/${node.type.toLowerCase()}/batch`, updatePayload);
-      console.log('Ignore toggle response:', response);
 
       // Update the node in the graph
       setGraphData((prevData: GraphData | null) => {
@@ -1328,7 +1314,6 @@ const AI_SPM: React.FC = () => {
     // If instance_id is not in metadata, try to extract it from the node ID
     if (!instanceId && node.id.startsWith('AssetType.ec2_')) {
       instanceId = node.id.substring('AssetType.ec2_'.length);
-      console.log('Extracted instance ID from node ID:', instanceId);
     }
 
     if (!instanceId) {
@@ -1341,14 +1326,10 @@ const AI_SPM: React.FC = () => {
       // Show a temporary notification that auto-dismisses after 5 seconds
       setTempNotification('Relocating instance to sandbox...');
 
-      console.log('Making request to relocate instance:', instanceId);
-
       // Call the relocate-ec2 endpoint with the instance ID
       const response = await api.post('/api/sandbox-enforcer/relocate-ec2', {
         instance_id: instanceId
       });
-
-      console.log('FortifAI action result:', response);
 
       // Refresh the graph data to show updated instance location
       await handleRefresh();
@@ -1451,7 +1432,7 @@ const AI_SPM: React.FC = () => {
   }, [graphData, sandboxVpcId]);
 
   // Update the findSandboxVPC function to use the same logic
-  const findSandboxVPC = (nodes: AssetWithMetadata[]): AssetWithMetadata | undefined => {
+  const findSandboxVPC = (nodes: Node[]): Node | undefined => {
     return nodes.find(node =>
       node.type === 'VPC' && (
         (node.metadata.tags && (node.metadata.tags as unknown as Record<string, string>)['Name'] === 'Sandbox') ||
@@ -1486,7 +1467,6 @@ const AI_SPM: React.FC = () => {
 
   const handleDetectAI = async () => {
     try {
-      console.log('Starting AI detection...');
       setIsDetecting(true);
       setDetectionError(null);
 
@@ -1494,7 +1474,6 @@ const AI_SPM: React.FC = () => {
       setTempNotification('AI detection started...');
 
       const result = await api.post('/api/ai-detector/detect');
-      console.log('AI detection result:', result);
 
       // Refresh the graph data to show updated AI detection results
       await handleRefresh();
@@ -1510,106 +1489,88 @@ const AI_SPM: React.FC = () => {
     }
   };
 
-  const fetchPodsData = async (node: Node) => {
-    try {
-      setIsLoadingPods(true);
-      
+  const handleNodeRightClick = (event: React.MouseEvent<HTMLCanvasElement>, node: Node) => {
+    event.preventDefault();
+    
+    // Only handle right-click for K8s nodes
+    if (node.type === 'EC2' && node.metadata?.is_kubernetes_node) {
       // Get all pods from the graph data
       const allPods = graphData?.nodes.filter((node: Node) => node.type === 'K8sPod') || [];
-      
-      // Debug information
-      console.log('Processing node:', {
-        name: node.name,
-        id: node.id,
-        k8s_node_name: node.metadata?.k8s_node_name,
-        metadata: node.metadata
-      });
       
       // Get the Kubernetes node name from the node's metadata
       const k8sNodeName = node.metadata?.k8s_node_name?.trim();
       
-      if (!k8sNodeName) {
-        console.log('No Kubernetes node name found for EC2 instance');
-        setPodsData([]);
-        return;
+      if (k8sNodeName) {
+        // Find all stale pods that are running on this Kubernetes node
+        const stalePods = allPods.filter((pod: Node) => {
+          const podNodeName = pod.metadata?.node_name?.trim();
+          const matches = podNodeName?.toLowerCase() === k8sNodeName.toLowerCase();
+          const isStale = pod.is_stale || pod.metadata?.is_stale;
+          return matches && isStale;
+        });
+
+        if (stalePods.length > 0) {
+          setContextMenu({
+            mouseX: event.clientX,
+            mouseY: event.clientY,
+            node: node,
+            stalePods: stalePods.map(pod => ({
+              name: pod.name,
+              namespace: pod.metadata?.namespace || 'default',
+              status: 'deleted',
+              node_name: pod.metadata?.node_name,
+              creation_timestamp: pod.metadata?.creation_timestamp || 'unknown',
+              pod_ip: 'N/A',
+              is_stale: true,
+              is_ai: pod.metadata?.is_ai || false,
+              is_llm: pod.metadata?.is_llm || false,
+              ai_detection_details: pod.metadata?.ai_detection_details || '',
+              ai_detection_confidence: pod.metadata?.ai_detection_confidence || 0,
+              ai_detected_frameworks: pod.metadata?.ai_detected_frameworks || [],
+              ai_detected_services: pod.metadata?.ai_detected_services || [],
+              ai_indicators: pod.metadata?.ai_indicators || {},
+              ai_risk_assessment: pod.metadata?.ai_risk_assessment || {}
+            }))
+          });
+        }
       }
-      
-      // Find all pods that are running on this Kubernetes node
-      const nodePods = allPods.filter((pod: Node) => {
-        const podNodeName = pod.metadata?.node_name?.trim();
-        const matches = podNodeName?.toLowerCase() === k8sNodeName.toLowerCase();
-        console.log(`Pod ${pod.name} node name: ${podNodeName}, matches: ${matches}`);
-        return matches;
-      });
-      
-      console.log('Filtered pods for node:', nodePods.map((pod: Node) => ({
-        name: pod.name,
-        nodeName: pod.metadata?.node_name,
-        metadata: pod.metadata
-      })));
-      
-      // Process pods, separating stale and active ones
-      const activePods = nodePods.filter((pod: Node) => !pod.metadata?.is_stale);
-      const stalePods = nodePods.filter((pod: Node) => pod.metadata?.is_stale);
-      
-      // Format active pods
-      const formattedActivePods = activePods.map((pod: Node) => {
-        const metadata = pod.metadata || {};
-        return {
-          name: pod.name,
-          namespace: metadata.namespace || 'default',
-          status: metadata.status || 'unknown',
-          node_name: metadata.node_name,
-          creation_timestamp: metadata.creation_timestamp || 'unknown',
-          pod_ip: metadata.pod_ip || 'unknown',
-          is_stale: false,
-          is_ai: metadata.is_ai || false,
-          is_llm: metadata.is_llm || false,
-          ai_detection_details: metadata.ai_detection_details || '',
-          ai_detection_confidence: metadata.ai_detection_confidence || 0,
-          ai_detected_frameworks: metadata.ai_detected_frameworks || [],
-          ai_detected_services: metadata.ai_detected_services || [],
-          ai_indicators: metadata.ai_indicators || {},
-          ai_risk_assessment: metadata.ai_risk_assessment || {}
-        };
-      });
-      
-      // Format stale pods
-      const formattedStalePods = stalePods.map((pod: Node) => {
-        const metadata = pod.metadata || {};
-        return {
-          name: pod.name,
-          namespace: metadata.namespace || 'default',
-          status: 'deleted',
-          node_name: metadata.node_name,
-          creation_timestamp: metadata.creation_timestamp || 'unknown',
-          pod_ip: 'N/A',
-          is_stale: true,
-          is_ai: metadata.is_ai || false,
-          is_llm: metadata.is_llm || false,
-          ai_detection_details: metadata.ai_detection_details || '',
-          ai_detection_confidence: metadata.ai_detection_confidence || 0,
-          ai_detected_frameworks: metadata.ai_detected_frameworks || [],
-          ai_detected_services: metadata.ai_detected_services || [],
-          ai_indicators: metadata.ai_indicators || {},
-          ai_risk_assessment: metadata.ai_risk_assessment || {}
-        };
-      });
-      
-      // Combine active and stale pods, with stale pods at the end
-      const allFormattedPods = [...formattedActivePods, ...formattedStalePods];
-      
-      setPodsData(allFormattedPods);
-    } catch (error) {
-      console.error('Error processing pods data:', error);
-    } finally {
-      setIsLoadingPods(false);
     }
+  };
+
+  // When a K8s node is selected, filter pods from graphData
+  const getPodsForSelectedK8sNode = (selectedK8sNode: Node | null): any[] => {
+    if (!selectedK8sNode || !graphData) return [];
+    const nodeName = selectedK8sNode.metadata?.k8s_node_name;
+    if (!nodeName) return [];
+    // Filter pods for this node
+    const allPods = graphData.nodes.filter((n: Node) => n.type === 'K8sPod' && n.metadata?.node_name === nodeName);
+    const mappedPods = allPods.map((pod: Node) => {
+      const isStale = pod.is_stale || pod.metadata?.is_stale;
+      return {
+        ...pod, // preserve all top-level properties, including is_stale
+        name: pod.name,
+        namespace: pod.metadata?.namespace || 'unknown',
+        status: pod.metadata?.status || 'unknown',
+        is_ai: pod.metadata?.is_ai || false,
+        ai_detection_details: pod.metadata?.ai_detection_details || '',
+        pod_ip: pod.metadata?.pod_ip || 'N/A',
+        creation_timestamp: pod.metadata?.creation_timestamp || 'unknown',
+        is_llm: pod.metadata?.is_llm || false,
+        ai_detection_confidence: pod.metadata?.ai_detection_confidence || 0,
+        ai_detected_frameworks: pod.metadata?.ai_detected_frameworks || [],
+        ai_detected_services: pod.metadata?.ai_detected_services || [],
+        ai_indicators: pod.metadata?.ai_indicators || {},
+        ai_risk_assessment: pod.metadata?.ai_risk_assessment || {}
+      };
+    });
+    return mappedPods;
   };
 
   const renderK8sNodePopup = () => {
     if (!selectedK8sNode) return null;
-
+    const podsData = getPodsForSelectedK8sNode(selectedK8sNode);
+    // Filter only non-stale pods for display unless showAllPods is true
+    const displayedPods = showAllPods ? podsData : podsData.filter(pod => !(pod.is_stale || pod.metadata?.is_stale));
     return (
       <>
         <Dialog
@@ -1625,101 +1586,80 @@ const AI_SPM: React.FC = () => {
             <Typography variant="subtitle1" gutterBottom>
               Instance ID: {selectedK8sNode.metadata.instance_id}
             </Typography>
+            <FormControlLabel
+              control={<Switch checked={showAllPods} onChange={(_, checked) => setShowAllPods(checked)} />}
+              label={showAllPods ? 'Show Only Non-Stale Pods' : 'Show All Pods (Including Stale)'}
+              sx={{ mb: 2 }}
+            />
             <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
               Running Pods
             </Typography>
-            {isLoadingPods ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <TableContainer component={Paper}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Namespace</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Is AI?</TableCell>
-                      <TableCell>Pod IP</TableCell>
-                      <TableCell>Created</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {podsData.map((pod, index) => (
-                      <TableRow 
-                        key={index}
-                        sx={{ 
-                          backgroundColor: pod.is_stale ? 'rgba(0, 0, 0, 0.04)' : 'inherit',
-                          '&:hover': {
-                            backgroundColor: pod.is_stale ? 'rgba(0, 0, 0, 0.08)' : 'inherit'
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Namespace</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Is AI?</TableCell>
+                    <TableCell>Is Stale</TableCell>
+                    <TableCell>Pod IP</TableCell>
+                    <TableCell>Created</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {displayedPods.map((pod: any, index: number) => (
+                    <TableRow key={index}>
+                      <TableCell>{pod.name}</TableCell>
+                      <TableCell>{pod.namespace}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={pod.status} 
+                          size="small"
+                          color={
+                            pod.status.toLowerCase() === 'running' ? 'success' :
+                            pod.status.toLowerCase() === 'pending' ? 'warning' :
+                            pod.status.toLowerCase() === 'failed' ? 'error' : 'default'
                           }
-                        }}
-                      >
-                        <TableCell>{pod.name}</TableCell>
-                        <TableCell>{pod.namespace}</TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={pod.status} 
-                            size="small"
-                            color={
-                              pod.status.toLowerCase() === 'running' ? 'success' :
-                              pod.status.toLowerCase() === 'pending' ? 'warning' :
-                              pod.status.toLowerCase() === 'failed' ? 'error' :
-                              pod.status.toLowerCase() === 'deleted' ? 'default' : 'default'
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={pod.is_ai || pod.is_llm ? 'Yes' : 'No'} 
-                            size="small"
-                            color={pod.is_ai || pod.is_llm ? 'warning' : 'default'}
-                            onClick={() => handlePodAIDetails(pod)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        </TableCell>
-                        <TableCell>{pod.pod_ip}</TableCell>
-                        <TableCell>
-                          {pod.creation_timestamp !== 'unknown' 
-                            ? new Date(pod.creation_timestamp).toLocaleString()
-                            : 'unknown'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {podsData.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} align="center">
-                          No pods running on this node
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={pod.is_ai || pod.is_llm ? 'Yes' : 'No'} 
+                          size="small"
+                          color={pod.is_ai || pod.is_llm ? 'warning' : 'default'}
+                          onClick={() => handlePodAIDetails(pod)}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={(pod.is_stale || pod.metadata?.is_stale) ? 'Yes' : 'No'} 
+                          size="small"
+                          color={(pod.is_stale || pod.metadata?.is_stale) ? 'error' : 'success'}
+                        />
+                      </TableCell>
+                      <TableCell>{pod.pod_ip}</TableCell>
+                      <TableCell>
+                        {pod.creation_timestamp !== 'unknown' 
+                          ? new Date(pod.creation_timestamp).toLocaleString()
+                          : 'unknown'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {displayedPods.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        No pods running on this node
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setK8sNodePopupOpen(false)}>Close</Button>
-          </DialogActions>
-        </Dialog>
-
-        <Dialog
-          open={aiDetailsDialog.open}
-          onClose={() => setAiDetailsDialog({ open: false, details: '' })}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>{aiDetailsDialog.title || 'AI Analysis Details'}</DialogTitle>
-          <DialogContent>
-            <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>
-              {aiDetailsDialog.details}
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setAiDetailsDialog({ open: false, details: '' })}>
-              Close
-            </Button>
           </DialogActions>
         </Dialog>
       </>
@@ -1755,9 +1695,7 @@ const AI_SPM: React.FC = () => {
         // Set the selected node and open popup
         setSelectedK8sNode(clickedNode);
         setK8sNodePopupOpen(true);
-        
-        // Fetch pods data with the node directly
-        fetchPodsData(clickedNode);
+        // fetchPodsData is obsolete and should not be called
       } else {
         // For non-K8s nodes, just set the selected node
         setSelectedNode(clickedNode);
@@ -1782,22 +1720,9 @@ const AI_SPM: React.FC = () => {
     }
 
     const node = contextMenu.node as EC2Node;
-    
-    // Add detailed logging
-    console.log('Flow log toggle clicked - Full node details:', {
-      node_type: node.type,
-      node_id: node.id,
-      node_name: node.name,
-      full_metadata: node.metadata,
-      instance_id: node.metadata.instance_id,
-      unique_id: node.metadata.unique_id
-    });
-
-    // Extract instance ID from either metadata or node ID
     let instanceId = node.metadata.instance_id;
     if (!instanceId && node.id.startsWith('AssetType.ec2_')) {
       instanceId = node.id.substring('AssetType.ec2_'.length);
-      console.log('Extracted instance ID from node ID:', instanceId);
     }
 
     const hasFlowLogs = node.metadata.has_flow_logs;
@@ -1814,10 +1739,8 @@ const AI_SPM: React.FC = () => {
       handleContextMenuClose();
 
       if (hasFlowLogs) {
-        console.log('Deactivating flow logs for instance:', instanceId);
         await api.deactivateFlowLogs(instanceId);
       } else {
-        console.log('Activating flow logs for instance:', instanceId);
         await api.activateFlowLogs(instanceId);
       }
       
