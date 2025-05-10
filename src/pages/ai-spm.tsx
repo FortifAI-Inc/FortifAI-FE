@@ -1831,6 +1831,39 @@ const AI_SPM: React.FC = () => {
             />
             <SecurityIcon sx={{ ml: 1, color: theme.palette.error.main }} />
           </ListItem>
+          <Divider sx={{ my: 1 }} />
+          <ListItem>
+            <ListItemText
+              primary="Kubernetes"
+              primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center', fontWeight: 'bold' } }}
+            />
+            <AccountTreeIcon sx={{ ml: 1, color: theme.palette.primary.main }} />
+          </ListItem>
+          <ListItem sx={{ pl: 4 }}>
+            <ListItemText
+              primary="Nodes"
+              secondary={`${graphData?.nodes.filter((n: Node) => n.type === 'EC2' && n.metadata?.is_kubernetes_node).length || 0} nodes`}
+              primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center' } }}
+            />
+            <ComputerIcon sx={{ ml: 1, color: theme.palette.primary.main }} />
+          </ListItem>
+          <ListItem sx={{ pl: 4 }}>
+            <ListItemText
+              primary="Pods"
+              secondary={
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Total: {graphData?.nodes.filter((n: Node) => n.type === 'K8sPod').length || 0} pods
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Active: {graphData?.nodes.filter((n: Node) => n.type === 'K8sPod' && !(n.is_stale || n.metadata?.is_stale)).length || 0} pods
+                  </Typography>
+                </Box>
+              }
+              primaryTypographyProps={{ sx: { display: 'flex', alignItems: 'center' } }}
+            />
+            <StorageIcon sx={{ ml: 1, color: theme.palette.primary.main }} />
+          </ListItem>
         </List>
       </Box>
 
