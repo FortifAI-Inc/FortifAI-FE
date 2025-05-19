@@ -19,27 +19,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Special handling for token requests
   if (apiPath === 'token') {
-    try {
-      const formData = new URLSearchParams();
-      formData.append('username', 'development');
-      formData.append('password', 'development');
-
-      const response = await fetch(`${config.apiGatewayUrl}/token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-        agent, // Use the agent that ignores SSL certificate validation
-      });
-
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } catch (error) {
-      console.error('Error in token proxy:', error);
-      res.status(500).json({ error: 'Failed to authenticate' });
-    }
-    return;
+    // Short-circuit: return a static development token
+    return res.status(200).json({
+      access_token: 'development_token',
+      token_type: 'bearer'
+    });
   }
 
   // Handle all other API requests
@@ -48,11 +32,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const pathParts = apiPath.split('/');
     const serviceName = pathParts[0];
     const servicePath = pathParts.slice(1).join('/');
-
-    // Construct the target URL
-    const targetUrl = `${config.apiGatewayUrl}/api/${API_VERSION}/${serviceName}/${servicePath}`;
-
+    
+    // Always construct the URL with api/v1 prefix
+    const targetUrl = `${config.apiGatewayUrl}/api/v1/${serviceName}/${servicePath}`;
+    
     console.error('Target URL:', targetUrl);
+    
     // Prepare headers
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -72,9 +57,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       agent, // Use the agent that ignores SSL certificate validation
     });
 
-    // Forward the response
-    const data = await response.json();
-    res.status(response.status).json(data);
+    // Check content type
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      // Handle JSON response
+      const data = await response.json();
+      res.status(response.status).json(data);
+    } else {
+      // Handle non-JSON response
+      const text = await response.text();
+      res.status(response.status).send(text);
+    }
   } catch (error) {
     console.error('Error in API proxy:', error);
     res.status(500).json({ error: 'Failed to proxy request' });

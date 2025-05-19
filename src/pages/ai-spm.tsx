@@ -284,7 +284,34 @@ const AI_SPM: React.FC = () => {
   const handleRefresh = async () => {
     try {
       setLoading(true);
-      const data = await api.refreshGraphData();
+      let data: GraphData = await api.getGraphData();
+      
+      // Ensure all subnets have the proper metadata structure
+      if (data && data.nodes) {
+        data = {
+          ...data,
+          nodes: data.nodes.map((node: Node) => {
+            if (node.type === 'Subnet') {
+              // Ensure metadata exists
+              if (!node.metadata) {
+                return {
+                  ...node,
+                  metadata: {
+                    asset_type: 'subnet',
+                    vpc_id: 'unknown',
+                    subnet_id: node.id.replace('AssetType.subnet_', ''),
+                    cidr_block: '',
+                    availability_zone: '',
+                    unique_id: node.id
+                  } as SubnetMetadata
+                };
+              }
+            }
+            return node;
+          })
+        };
+      }
+
       setGraphData(data);
       setError(null);
     } catch (err) {
@@ -1445,11 +1472,12 @@ const AI_SPM: React.FC = () => {
   const handleSyncAssets = async () => {
     try {
       setIsSyncing(true);
+      await api.post('assets-monitor/sync');
       setSyncError(null);
-      await api.post('/api/assets-monitor/sync');
-    } catch (err) {
+      setTempNotification('Assets synchronized successfully');
+    } catch (error) {
+      console.error('Error syncing assets:', error);
       setSyncError('Failed to sync assets');
-      console.error('Error syncing assets:', err);
     } finally {
       setIsSyncing(false);
     }

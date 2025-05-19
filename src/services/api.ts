@@ -20,52 +20,45 @@ export class ApiError extends Error {
 
 export class ApiService {
   private token: string | null = null;
-  private isAuthenticating: boolean = false;
+  private graphDataCache: GraphData | null = null;
+  private lastFetchTime: number = 0;
+  private fetchInProgress: boolean = false;
+  private fetchPromise: Promise<GraphData> | null = null;
 
   private async authenticate() {
-    if (this.isAuthenticating) return;
-    
     try {
-      this.isAuthenticating = true;
-      const formData = new URLSearchParams();
-      formData.append('username', 'development');
-      formData.append('password', 'development');
-      
       const response = await fetch('/api/proxy/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: formData.toString(),
+        body: new URLSearchParams({
+          username: 'development',
+          password: 'development'
+        }).toString()
       });
 
       if (!response.ok) {
-        throw new Error('Authentication failed');
+        throw new Error(`Authentication failed: ${response.statusText}`);
       }
 
       const data = await response.json();
       this.token = data.access_token;
-      this.isAuthenticating = false;
+      return this.token;
     } catch (error) {
-      this.isAuthenticating = false;
+      console.error('[API] Authentication error:', error);
       throw error;
     }
   }
 
   private async fetchWithAuth(endpoint: string, options: RequestInit = {}): Promise<any> {
+    // Ensure we have a valid token
     if (!this.token) {
       await this.authenticate();
     }
 
-    // Construct the URL based on whether the endpoint starts with /api/
-    let url;
-    if (endpoint.startsWith('/api/')) {
-      // For all endpoints starting with /api/, add /proxy after /api
-      url = `/api/proxy${endpoint.substring(4)}`;
-    } else {
-      // For other endpoints, remove any leading slash and add /api/proxy/
-      url = `/api/proxy/${endpoint.replace(/^\//, '')}`;
-    }
+    // Always construct the URL with /api/proxy prefix
+    const url = `/api/proxy/${endpoint.replace(/^\/api\//, '')}`;
     
     console.log(`Fetching with auth: ${url}`, options);
 
@@ -86,12 +79,12 @@ export class ApiService {
       });
 
       clearTimeout(timeoutId);
-      console.log(`Response status: ${response.status}`, response.statusText);
 
-      if (response.status === 401) {
-        // Token expired, try to re-authenticate
+      if (response.status === 401 || response.status === 403) {
+        // Token expired or invalid, try to re-authenticate
         this.token = null;
         await this.authenticate();
+        // Retry the request with the new token
         return this.fetchWithAuth(endpoint, options);
       }
 
@@ -193,72 +186,128 @@ export class ApiService {
   }
 
   async getGraphData(): Promise<GraphData> {
+    // If there's a fetch in progress, return the existing promise
+    if (this.fetchInProgress && this.fetchPromise) {
+      return this.fetchPromise;
+    }
+
+    // If we have cached data that's less than 5 minutes old, return it
+    const now = Date.now();
+    if (this.graphDataCache && (now - this.lastFetchTime) < 5 * 60 * 1000) {
+      return this.graphDataCache;
+    }
+
+    // Start a new fetch
+    this.fetchInProgress = true;
+    this.fetchPromise = this.fetchGraphData();
+    
     try {
+      const result = await this.fetchPromise;
+      this.graphDataCache = result;
+      this.lastFetchTime = now;
+      return result;
+    } finally {
+      this.fetchInProgress = false;
+      this.fetchPromise = null;
+    }
+  }
+
+  private async fetchGraphData(): Promise<GraphData> {
+    try {
+      // Ensure we have a valid token before starting
+      if (!this.token) {
+        await this.authenticate();
+      }
+
       // Fetch all asset types including Kubernetes resources
       const assetTypes = [
         'vpc', 'subnet', 'ec2', 'sg', 's3', 'iam_role', 'iam_policy', 'user', 'igw',
         'k8s_pod', 'k8s_node', 'k8s_deployment', 'k8s_service'
       ];
       const assets: AssetData[] = [];
+      const failedAssetTypes: string[] = [];
       
-      for (const assetType of assetTypes) {
-        const data = await this.fetchAssets(assetType);
-        
-        // Process each asset
-        data.forEach(asset => {
-          // Debug print for k8s_pod assets
+      // Process assets in parallel with a concurrency limit
+      const concurrencyLimit = 3;
+      const chunks = [];
+      for (let i = 0; i < assetTypes.length; i += concurrencyLimit) {
+        chunks.push(assetTypes.slice(i, i + concurrencyLimit));
+      }
 
-          const processedAsset: AssetData = {
-            ...asset,
-            is_stale: asset.is_stale || false,  // Ensure is_stale is always defined
-            metadata: {
-              ...asset.metadata,
-              asset_type: asset.metadata?.asset_type || assetType,
-              vpc_id: asset.metadata?.vpc_id || asset.metadata?.vpc_id,
-              unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
-              instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
-              instance_type: asset.metadata?.instance_type || asset.metadata?.instance_type,
-              private_ip_address: asset.metadata?.private_ip_address || asset.metadata?.private_ip_address,
-              public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
-              launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
-              network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
-              subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
-              bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
-              creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
-              internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
-              group_id: asset.metadata?.group_id || asset.metadata?.group_id,
-              network_interface_id: asset.metadata?.network_interface_id || asset.metadata?.network_interface_id,
-              availability_zone: asset.metadata?.availability_zone || asset.metadata?.availability_zone,
-              attachment_id: asset.metadata?.attachment_id || asset.metadata?.attachment_id,
-              role_id: asset.metadata?.role_id || asset.metadata?.role_id,
-              role_name: asset.metadata?.role_name || asset.metadata?.role_name,
-              assume_role_policy_document: asset.metadata?.assume_role_policy_document || asset.metadata?.assume_role_policy_document,
-              policy_id: asset.metadata?.policy_id || asset.metadata?.policy_id,
-              policy_name: asset.metadata?.policy_name || asset.metadata?.policy_name,
-              attachment_count: asset.metadata?.attachment_count || asset.metadata?.attachment_count,
-              permissions_boundary_usage_count: asset.metadata?.permissions_boundary_usage_count || asset.metadata?.permissions_boundary_usage_count,
-              user_id: asset.metadata?.user_id || asset.metadata?.user_id,
-              user_name: asset.metadata?.user_name || asset.metadata?.user_name,
-              access_key_ids: asset.metadata?.access_key_ids || asset.metadata?.access_key_ids,
-              attached_policy_names: asset.metadata?.attached_policy_names || asset.metadata?.attached_policy_names,
-              inline_policy_names: asset.metadata?.inline_policy_names || asset.metadata?.inline_policy_names,
-              is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
-              ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
-              is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
-              tags: asset.tags,
-              is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
-              has_flow_logs: asset.metadata?.has_flow_logs || false
+      for (const chunk of chunks) {
+        const chunkPromises = chunk.map(async (assetType) => {
+          try {
+            console.log(`[API] Fetching ${assetType} assets...`);
+            const data = await this.fetchAssets(assetType);
+            
+            if (!Array.isArray(data)) {
+              console.error(`[API] Invalid response format for ${assetType}:`, data);
+              failedAssetTypes.push(assetType);
+              return;
             }
-          };
-          
-          assets.push(processedAsset);
+            
+            data.forEach(asset => {
+              const processedAsset: AssetData = {
+                ...asset,
+                is_stale: asset.is_stale || false,
+                metadata: {
+                  ...asset.metadata,
+                  asset_type: asset.metadata?.asset_type || assetType,
+                  vpc_id: asset.metadata?.vpc_id || asset.metadata?.vpc_id,
+                  unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
+                  instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
+                  instance_type: asset.metadata?.instance_type || asset.metadata?.instance_type,
+                  private_ip_address: asset.metadata?.private_ip_address || asset.metadata?.private_ip_address,
+                  public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
+                  launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
+                  network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
+                  subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
+                  bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
+                  creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
+                  internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
+                  group_id: asset.metadata?.group_id || asset.metadata?.group_id,
+                  network_interface_id: asset.metadata?.network_interface_id || asset.metadata?.network_interface_id,
+                  availability_zone: asset.metadata?.availability_zone || asset.metadata?.availability_zone,
+                  attachment_id: asset.metadata?.attachment_id || asset.metadata?.attachment_id,
+                  role_id: asset.metadata?.role_id || asset.metadata?.role_id,
+                  role_name: asset.metadata?.role_name || asset.metadata?.role_name,
+                  assume_role_policy_document: asset.metadata?.assume_role_policy_document || asset.metadata?.assume_role_policy_document,
+                  policy_id: asset.metadata?.policy_id || asset.metadata?.policy_id,
+                  policy_name: asset.metadata?.policy_name || asset.metadata?.policy_name,
+                  attachment_count: asset.metadata?.attachment_count || asset.metadata?.attachment_count,
+                  permissions_boundary_usage_count: asset.metadata?.permissions_boundary_usage_count || asset.metadata?.permissions_boundary_usage_count,
+                  user_id: asset.metadata?.user_id || asset.metadata?.user_id,
+                  user_name: asset.metadata?.user_name || asset.metadata?.user_name,
+                  access_key_ids: asset.metadata?.access_key_ids || asset.metadata?.access_key_ids,
+                  attached_policy_names: asset.metadata?.attached_policy_names || asset.metadata?.attached_policy_names,
+                  inline_policy_names: asset.metadata?.inline_policy_names || asset.metadata?.inline_policy_names,
+                  is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
+                  ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
+                  is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
+                  tags: asset.tags,
+                  is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
+                  has_flow_logs: asset.metadata?.has_flow_logs || false
+                }
+              };
+              assets.push(processedAsset);
+            });
+            
+            console.log(`[API] Successfully fetched ${data.length} ${assetType} assets`);
+          } catch (error) {
+            console.error(`[API] Error fetching ${assetType} assets:`, error);
+            failedAssetTypes.push(assetType);
+          }
         });
+
+        await Promise.all(chunkPromises);
+      }
+      
+      if (failedAssetTypes.length > 0) {
+        console.warn(`[API] Failed to fetch the following asset types: ${failedAssetTypes.join(', ')}`);
       }
       
       // Create nodes and links
       const nodes = assets.map(asset => {
-        // Add debug logging for EC2 nodes
-
         return {
           id: asset.unique_id,
           name: asset.name,
@@ -295,7 +344,7 @@ export class ApiService {
       // Match EC2 instances with Kubernetes nodes
       const ec2Instances = nodes.filter(node => node.type === 'EC2' && node.metadata.is_kubernetes_node);
       const k8sNodes = nodes.filter(node => node.type === 'K8sNode');
-      //console.error('k8sNodes', k8sNodes);
+      
       ec2Instances.forEach(ec2 => {
         // Extract instance ID from the EC2 node ID
         const instanceId = ec2.id.split('_').pop();
@@ -321,12 +370,13 @@ export class ApiService {
       });
       
       // Log final asset distribution
-      console.error('[API Debug] Final asset distribution:', {
+      console.log('[API] Final asset distribution:', {
         total: nodes.length,
         byType: nodes.reduce((acc, node) => {
           acc[node.type] = (acc[node.type] || 0) + 1;
           return acc;
-        }, {} as Record<string, number>)
+        }, {} as Record<string, number>),
+        failedTypes: failedAssetTypes
       });
       
       return {
@@ -339,11 +389,12 @@ export class ApiService {
             return acc;
           }, {} as Record<string, number>)),
           vpcCount: assets.filter(asset => asset.metadata.asset_type === 'vpc').length,
-          lastUpdate: new Date().toISOString()
+          lastUpdate: new Date().toISOString(),
+          failedAssetTypes
         }
       };
     } catch (error) {
-      console.error('Error fetching graph data:', error);
+      console.error('[API] Error fetching graph data:', error);
       throw error;
     }
   }
@@ -371,12 +422,12 @@ export class ApiService {
 
   async refreshGraphData(): Promise<GraphData> {
     try {
-      await this.fetchWithAuth('/api/data-access/assets/refresh', {
-        method: 'POST',
+      await this.fetchWithAuth('/api/v1/sync', {
+        method: 'POST'
       });
       return this.getGraphData();
     } catch (error) {
-      console.error('Failed to refresh graph data:', error);
+      console.error('[API] Error refreshing graph data:', error);
       throw error;
     }
   }
