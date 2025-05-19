@@ -40,7 +40,7 @@ export interface GraphData {
     assetTypes: string[];
     vpcCount: number;
     lastUpdate: string;
-    failedAssetTypes?: string[];
+    failedAssetTypes: string[];
   };
 }
 
