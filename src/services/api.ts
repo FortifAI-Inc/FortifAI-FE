@@ -227,79 +227,72 @@ export class ApiService {
       const assets: AssetData[] = [];
       const failedAssetTypes: string[] = [];
       
-      // Process assets in parallel with a concurrency limit
-      const concurrencyLimit = 3;
-      const chunks = [];
-      for (let i = 0; i < assetTypes.length; i += concurrencyLimit) {
-        chunks.push(assetTypes.slice(i, i + concurrencyLimit));
-      }
-
-      for (const chunk of chunks) {
-        const chunkPromises = chunk.map(async (assetType) => {
-          try {
-            console.log(`[API] Fetching ${assetType} assets...`);
-            const data = await this.fetchAssets(assetType);
-            
-            if (!Array.isArray(data)) {
-              console.error(`[API] Invalid response format for ${assetType}:`, data);
-              failedAssetTypes.push(assetType);
-              return;
-            }
-            
-            data.forEach(asset => {
-              const processedAsset: AssetData = {
-                ...asset,
-                is_stale: asset.is_stale || false,
-                metadata: {
-                  ...asset.metadata,
-                  asset_type: asset.metadata?.asset_type || assetType,
-                  vpc_id: asset.metadata?.vpc_id || asset.metadata?.vpc_id,
-                  unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
-                  instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
-                  instance_type: asset.metadata?.instance_type || asset.metadata?.instance_type,
-                  private_ip_address: asset.metadata?.private_ip_address || asset.metadata?.private_ip_address,
-                  public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
-                  launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
-                  network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
-                  subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
-                  bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
-                  creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
-                  internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
-                  group_id: asset.metadata?.group_id || asset.metadata?.group_id,
-                  network_interface_id: asset.metadata?.network_interface_id || asset.metadata?.network_interface_id,
-                  availability_zone: asset.metadata?.availability_zone || asset.metadata?.availability_zone,
-                  attachment_id: asset.metadata?.attachment_id || asset.metadata?.attachment_id,
-                  role_id: asset.metadata?.role_id || asset.metadata?.role_id,
-                  role_name: asset.metadata?.role_name || asset.metadata?.role_name,
-                  assume_role_policy_document: asset.metadata?.assume_role_policy_document || asset.metadata?.assume_role_policy_document,
-                  policy_id: asset.metadata?.policy_id || asset.metadata?.policy_id,
-                  policy_name: asset.metadata?.policy_name || asset.metadata?.policy_name,
-                  attachment_count: asset.metadata?.attachment_count || asset.metadata?.attachment_count,
-                  permissions_boundary_usage_count: asset.metadata?.permissions_boundary_usage_count || asset.metadata?.permissions_boundary_usage_count,
-                  user_id: asset.metadata?.user_id || asset.metadata?.user_id,
-                  user_name: asset.metadata?.user_name || asset.metadata?.user_name,
-                  access_key_ids: asset.metadata?.access_key_ids || asset.metadata?.access_key_ids,
-                  attached_policy_names: asset.metadata?.attached_policy_names || asset.metadata?.attached_policy_names,
-                  inline_policy_names: asset.metadata?.inline_policy_names || asset.metadata?.inline_policy_names,
-                  is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
-                  ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
-                  is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
-                  tags: asset.tags,
-                  is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
-                  has_flow_logs: asset.metadata?.has_flow_logs || false
-                }
-              };
-              assets.push(processedAsset);
-            });
-            
-            console.log(`[API] Successfully fetched ${data.length} ${assetType} assets`);
-          } catch (error) {
-            console.error(`[API] Error fetching ${assetType} assets:`, error);
+      // Process assets sequentially to avoid rate limiting
+      for (const assetType of assetTypes) {
+        try {
+          console.log(`[API] Fetching ${assetType} assets...`);
+          const data = await this.fetchAssets(assetType);
+          
+          if (!Array.isArray(data)) {
+            console.error(`[API] Invalid response format for ${assetType}:`, data);
             failedAssetTypes.push(assetType);
+            continue;
           }
-        });
-
-        await Promise.all(chunkPromises);
+          
+          data.forEach(asset => {
+            const processedAsset: AssetData = {
+              ...asset,
+              is_stale: asset.is_stale || false,
+              metadata: {
+                ...asset.metadata,
+                asset_type: asset.metadata?.asset_type || assetType,
+                vpc_id: asset.metadata?.vpc_id || asset.metadata?.vpc_id,
+                unique_id: asset.metadata?.unique_id || asset.metadata?.unique_id,
+                instance_id: asset.metadata?.instance_id || asset.metadata?.instance_id,
+                instance_type: asset.metadata?.instance_type || asset.metadata?.instance_type,
+                private_ip_address: asset.metadata?.private_ip_address || asset.metadata?.private_ip_address,
+                public_ip_address: asset.metadata?.public_ip_address || asset.metadata?.public_ip_address,
+                launch_time: asset.metadata?.launch_time || asset.metadata?.launch_time,
+                network_interfaces: asset.metadata?.network_interfaces || asset.metadata?.network_interfaces,
+                subnet_id: asset.metadata?.subnet_id || asset.metadata?.subnet_id,
+                bucket_name: asset.metadata?.bucket_name || asset.metadata?.bucket_name,
+                creation_date: asset.metadata?.creation_date || asset.metadata?.creation_date,
+                internet_gateway_id: asset.metadata?.internet_gateway_id || asset.metadata?.internet_gateway_id,
+                group_id: asset.metadata?.group_id || asset.metadata?.group_id,
+                network_interface_id: asset.metadata?.network_interface_id || asset.metadata?.network_interface_id,
+                availability_zone: asset.metadata?.availability_zone || asset.metadata?.availability_zone,
+                attachment_id: asset.metadata?.attachment_id || asset.metadata?.attachment_id,
+                role_id: asset.metadata?.role_id || asset.metadata?.role_id,
+                role_name: asset.metadata?.role_name || asset.metadata?.role_name,
+                assume_role_policy_document: asset.metadata?.assume_role_policy_document || asset.metadata?.assume_role_policy_document,
+                policy_id: asset.metadata?.policy_id || asset.metadata?.policy_id,
+                policy_name: asset.metadata?.policy_name || asset.metadata?.policy_name,
+                attachment_count: asset.metadata?.attachment_count || asset.metadata?.attachment_count,
+                permissions_boundary_usage_count: asset.metadata?.permissions_boundary_usage_count || asset.metadata?.permissions_boundary_usage_count,
+                user_id: asset.metadata?.user_id || asset.metadata?.user_id,
+                user_name: asset.metadata?.user_name || asset.metadata?.user_name,
+                access_key_ids: asset.metadata?.access_key_ids || asset.metadata?.access_key_ids,
+                attached_policy_names: asset.metadata?.attached_policy_names || asset.metadata?.attached_policy_names,
+                inline_policy_names: asset.metadata?.inline_policy_names || asset.metadata?.inline_policy_names,
+                is_ai: asset.metadata?.is_ai || asset.metadata?.is_ai,
+                ai_detection_details: asset.metadata?.ai_detection_details || asset.metadata?.ai_detection_details,
+                is_ignored: asset.metadata?.is_ignored || asset.metadata?.is_ignored,
+                tags: asset.tags,
+                is_sandbox: asset.metadata?.is_sandbox || asset.metadata?.is_sandbox,
+                has_flow_logs: asset.metadata?.has_flow_logs || false
+              }
+            };
+            assets.push(processedAsset);
+          });
+          
+          console.log(`[API] Successfully fetched ${data.length} ${assetType} assets`);
+          
+          // Add a small delay between requests to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (error) {
+          console.error(`[API] Error fetching ${assetType} assets:`, error);
+          failedAssetTypes.push(assetType);
+        }
       }
       
       if (failedAssetTypes.length > 0) {
@@ -359,24 +352,7 @@ export class ApiService {
         if (matchingK8sNode) {
           // Add the Kubernetes node name to the EC2's metadata
           ec2.metadata.k8s_node_name = matchingK8sNode.name;
-          
-          console.log('Matched EC2 with K8s node:', {
-            ec2Name: ec2.name,
-            ec2Id: ec2.id,
-            k8sNodeName: matchingK8sNode.name,
-            instanceId
-          });
         }
-      });
-      
-      // Log final asset distribution
-      console.log('[API] Final asset distribution:', {
-        total: nodes.length,
-        byType: nodes.reduce((acc, node) => {
-          acc[node.type] = (acc[node.type] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>),
-        failedTypes: failedAssetTypes
       });
       
       return {
