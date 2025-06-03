@@ -5,6 +5,7 @@ import {
   Dashboard as DashboardIcon,
   Security as SecurityIcon,
   Menu as MenuIcon,
+  Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -39,6 +40,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'AI - SPM', icon: <SecurityIcon />, path: '/ai-spm' },
+    { text: 'Security Audit', icon: <AssessmentIcon />, path: '/security-audit' },
   ];
 
   return (

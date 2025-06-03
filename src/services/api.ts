@@ -458,6 +458,29 @@ export class ApiService {
     console.log('deactivateFlowLogs API response:', response);
     return response;
   }
+
+  async startLogCollection(collectionConfig: {
+    startTime: string;
+    endTime: string;
+    continuePrevious: boolean;
+    seriesId?: string;
+  }): Promise<any> {
+    try {
+      // The endpoint path needs to be correctly formatted for the proxy.
+      // If the actual backend endpoint is /api/v1/logs-collector/collect,
+      // and the proxy takes /api/proxy/[service]/[path],
+      // then the path here should be logs-collector/collect
+      const endpoint = 'logs-collector/collect';
+      console.log(`Starting log collection with config:`, collectionConfig);
+      return await this.fetchWithAuth(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(collectionConfig),
+      });
+    } catch (error) {
+      console.error('Failed to start log collection:', error);
+      throw error;
+    }
+  }
 }
 
 export const api = new ApiService();
