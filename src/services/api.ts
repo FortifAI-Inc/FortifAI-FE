@@ -1,5 +1,5 @@
 import { config, API_VERSION } from '../config';
-import { AssetData, GraphData, NodeType, Link } from '../types';
+import { AssetData, GraphData, NodeType, Link, CloudTrailCollection } from '../types';
 
 interface AuthResponse {
   access_token: string;
@@ -481,7 +481,45 @@ export class ApiService {
       throw error;
     }
   }
+
+  async getCloudTrailCollections(): Promise<CloudTrailCollection[]> {
+    const endpoint = 'logs-collector/collect/list';
+    try {
+      const data = await this.fetchWithAuth(endpoint, { method: 'GET' });
+      if (!data || !Array.isArray(data.collections)) {
+        console.error('[API] Invalid response format for CloudTrail collections:', data);
+        return []; 
+      }
+      // Log the raw data received from logs-collector
+      console.log('api.ts: Raw data from logs-collector:', JSON.stringify(data, null, 2));
+
+      return data.collections.map((item: any) => {
+        // ADDED LOGS START
+        console.log(`api.ts item mapping for seriesId: ${item.seriesId}`);
+        console.log(`api.ts item.creationDate: ${item.creationDate}, type: ${typeof item.creationDate}`);
+        console.log(`api.ts item.firstEventTime: ${item.firstEventTime}, type: ${typeof item.firstEventTime}`);
+        console.log(`api.ts item.lastEventTime: ${item.lastEventTime}, type: ${typeof item.lastEventTime}`);
+        console.log(`api.ts item.startTime: ${item.startTime}, type: ${typeof item.startTime}`);
+        console.log(`api.ts item.endTime: ${item.endTime}, type: ${typeof item.endTime}`);
+        // ADDED LOGS END
+
+        return {
+          seriesId: item.seriesId,
+          creationDate: item.creationDate || item.startTime || new Date().toISOString(),
+          lastUpdate: item.lastUpdate || new Date().toISOString(),
+          eventCount: item.eventCount || 0,
+          firstEventTime: item.firstEventTime || item.startTime || new Date().toISOString(),
+          lastEventTime: item.lastEventTime || item.endTime || new Date().toISOString(),
+          status: item.status || 'Unknown',
+          filter: item.filter || "N/A",
+        };
+      });
+    } catch (error) {
+      console.error('[API] Error fetching CloudTrail collections:', error);
+      throw error;
+    }
+  }
 }
 
 export const api = new ApiService();
-export type { GraphData, NodeType, Link };
+export type { GraphData, NodeType, Link, CloudTrailCollection };

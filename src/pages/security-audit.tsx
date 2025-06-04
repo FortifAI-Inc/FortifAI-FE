@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -30,17 +30,7 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import Layout from '../components/Layout';
 import { api } from '../services/api'; // Import the api service
-
-interface CloudTrailCollection {
-  seriesId: string;
-  creationDate: string;
-  lastUpdate: string;
-  eventCount: number;
-  firstEventTime: string;
-  lastEventTime: string;
-  status: string;
-  filter: string;
-}
+import { CloudTrailCollection } from '../types'; // Import CloudTrailCollection
 
 interface AnalyticsResult {
   seriesId: string;
@@ -57,6 +47,7 @@ const SecurityAudit: React.FC = () => {
   const [analytics, setAnalytics] = useState<AnalyticsResult[]>([]);
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [errorCollections, setErrorCollections] = useState<string | null>(null);
 
   // State for the "New Collection" dialog
   const [openNewCollectionDialog, setOpenNewCollectionDialog] = useState(false);
@@ -66,49 +57,20 @@ const SecurityAudit: React.FC = () => {
   const [newCollectionContinuePrevious, setNewCollectionContinuePrevious] = useState(false);
   const [newCollectionError, setNewCollectionError] = useState<string | null>(null);
 
-  // Sample data - replace with actual API calls
-  const cloudTrailData: CloudTrailCollection[] = [
-    {
-      seriesId: "CT-001",
-      creationDate: "2024-03-20T10:00:00Z",
-      lastUpdate: "2024-03-20T11:00:00Z",
-      eventCount: 150,
-      firstEventTime: "2024-03-20T00:00:00Z",
-      lastEventTime: "2024-03-20T10:00:00Z",
-      status: "Completed",
-      filter: "AWS API Calls"
-    },
-    // Add more sample data as needed
-  ];
-
-  const analyticsData: AnalyticsResult[] = [
-    {
-      seriesId: "AN-001",
-      analysisTime: "2024-03-20T12:00:00Z",
-      startTime: "2024-03-20T00:00:00Z",
-      endTime: "2024-03-20T10:00:00Z",
-      eventsCount: 150,
-      results: "No anomalies detected"
-    },
-    // Add more sample data as needed
-  ];
-
   const handleResizeStop: ResizeCallback = (e, direction, ref, d) => {
     setUpperHeight(upperHeight + d.height);
   };
 
   const fetchCollections = async () => {
     setLoadingCollections(true);
+    setErrorCollections(null);
     try {
-      // This is a placeholder. You'll need to implement a method in your api service
-      // to fetch collections. For now, using the sample data.
-      // const data = await api.getCloudTrailCollections();
-      // setCollections(data);
-      setCollections(cloudTrailData); // Using sample data for now
-      console.log("Fetched collections");
+      const data = await api.getCloudTrailCollections();
+      setCollections(data);
+      console.log("Fetched collections:", data);
     } catch (error) {
       console.error("Error fetching collections:", error);
-      // Handle error (e.g., show a notification)
+      setErrorCollections(error instanceof Error ? error.message : "Failed to fetch collections.");
     } finally {
       setLoadingCollections(false);
     }
@@ -119,9 +81,9 @@ const SecurityAudit: React.FC = () => {
     try {
       // Placeholder for fetching analytics data
       // const data = await api.getAnalytics();
-      // setAnalytics(data);
-      setAnalytics(analyticsData); // Using sample data
-      console.log("Fetched analytics");
+      // For now, set to empty or handle appropriately if no API exists yet
+      setAnalytics([]); // Cleared sample data usage
+      console.log("Fetched analytics (cleared sample data)");
     } catch (error) {
       console.error("Error fetching analytics:", error);
     } finally {
@@ -252,7 +214,12 @@ const SecurityAudit: React.FC = () => {
                   </Button>
                 </Box>
               </Box>
-              <TableContainer sx={{ maxHeight: upperHeight - 70 }}>
+              {errorCollections && (
+                <Box sx={{ p: 2, pt: 0 }}>
+                  <Typography color="error">Error: {errorCollections}</Typography>
+                </Box>
+              )}
+              <TableContainer sx={{ maxHeight: upperHeight - (errorCollections ? 90 : 70) }}>
                 <Table stickyHeader>
                   <TableHead>
                     <TableRow>

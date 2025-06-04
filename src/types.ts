@@ -123,4 +123,15 @@ export interface GraphData {
     lastUpdate: string;
     failedAssetTypes?: string[];
   };
+}
+
+export interface CloudTrailCollection {
+  seriesId: string;
+  creationDate: string;
+  lastUpdate: string;
+  eventCount: number;
+  firstEventTime: string;
+  lastEventTime: string;
+  status: string;
+  filter: string;
 } 
