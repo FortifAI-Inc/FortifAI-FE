@@ -1,5 +1,5 @@
 import { config, API_VERSION } from '../config';
-import { AssetData, GraphData, NodeType, Link, CloudTrailCollection } from '../types';
+import { AssetData, GraphData, NodeType, Link, CloudTrailCollection, AnalyticsResult } from '../types';
 
 interface AuthResponse {
   access_token: string;
@@ -72,7 +72,7 @@ export class ApiService {
         ...options,
         headers: {
           'Authorization': `Bearer ${this.token}`,
-          ...(options.method && options.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.method && options.method == 'POST' ? { 'Content-Type': 'application/json' } : {}),
           ...options.headers,
         },
         signal: controller.signal
@@ -516,6 +516,61 @@ export class ApiService {
       });
     } catch (error) {
       console.error('[API] Error fetching CloudTrail collections:', error);
+      throw error;
+    }
+  }
+
+  async runComputeEventsAnalysis(payload: {
+    seriesId: string;
+    startTime: string;
+    endTime: string;
+  }): Promise<any> {
+    const endpoint = 'logs-collector/analyze/compute-events';
+    try {
+      console.log(`[API] Running compute events analysis with payload:`, payload);
+      return await this.fetchWithAuth(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      console.error('[API] Error running compute events analysis:', error);
+      throw error;
+    }
+  }
+
+  async getAnalytics(seriesId?: string): Promise<AnalyticsResult[]> {
+    try {
+      const endpoint = seriesId 
+        ? `logs-collector/analytics/list?seriesId=${seriesId}`
+        : 'logs-collector/analytics/list';
+      const response = await this.fetchWithAuth(endpoint);
+      return response;
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      throw error;
+    }
+  }
+
+  async getAnalyticsById(seriesId: string, analysisId: string): Promise<any> {
+    try {
+      const endpoint = `logs-collector/cloudtrail/analytics/${seriesId}/${analysisId}`;
+      const response = await this.fetchWithAuth(endpoint);
+      return response;
+    } catch (error) {
+      console.error('Error fetching analytics by ID:', error);
+      throw error;
+    }
+  }
+
+  async deleteAnalyticsById(seriesId: string, analysisId: string): Promise<any> {
+    try {
+      const endpoint = `logs-collector/cloudtrail/analytics/${seriesId}/${analysisId}`;
+      const response = await this.fetchWithAuth(endpoint, {
+        method: 'DELETE'
+      });
+      return response;
+    } catch (error) {
+      console.error('Error deleting analytics by ID:', error);
       throw error;
     }
   }

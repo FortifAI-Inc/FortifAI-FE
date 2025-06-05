@@ -134,4 +134,49 @@ export interface CloudTrailCollection {
   lastEventTime: string;
   status: string;
   filter: string;
+}
+
+export interface AnalyticsResult {
+  seriesId: string;
+  analysisId: string;
+  analysisTime: string;
+  startTime: string;
+  endTime: string;
+  eventsCount: number;
+  status: string;
+  results: {
+    id: string;
+    status: string;
+    startTime: string;
+    parameters: {
+      startDate: string;
+      endDate: string;
+      eventSource?: string;
+      eventName?: string;
+      seriesId: string;
+    };
+    instances: Record<string, any>;
+    IPAddresses: Record<string, any>;
+    summary: {
+      total_events_processed: number;
+      security_insights: {
+        total_security_events: number;
+        unique_users: string[];
+      };
+      operational_insights: {
+        total_operational_events: number;
+      };
+      network_insights: {
+        total_network_events: number;
+      };
+      event_name_counts: Record<string, number>;
+    };
+    metadata: {
+      eventIdMap: Record<string, any>;
+      processingTime: string;
+      totalEvents: number;
+      totalInstances: number;
+    };
+    endTime?: string;
+  };
 } 

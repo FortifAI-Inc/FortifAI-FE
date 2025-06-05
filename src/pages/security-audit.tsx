@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -20,6 +20,9 @@ import {
   TextField,
   Switch,
   FormControlLabel,
+  Menu,
+  MenuItem,
+  CircularProgress
 } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -28,18 +31,31 @@ import { Resizable, ResizeCallback } from 're-resizable';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import DownloadIcon from '@mui/icons-material/Download';
+import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import Layout from '../components/Layout';
 import { api } from '../services/api'; // Import the api service
-import { CloudTrailCollection } from '../types'; // Import CloudTrailCollection
+import { CloudTrailCollection, AnalyticsResult } from '../types'; // Import CloudTrailCollection AND AnalyticsResult
 
-interface AnalyticsResult {
-  seriesId: string;
-  analysisTime: string;
-  startTime: string;
-  endTime: string;
-  eventsCount: number;
-  results: string;
-}
+// Helper to format date for datetime-local input
+const formatDateTimeForInput = (isoString: string): string => {
+  if (!isoString) return '';
+  try {
+    const date = new Date(isoString);
+    // Format: YYYY-MM-DDTHH:mm
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  } catch (e) {
+    console.error("Error formatting date for input:", e);
+    return ''; // Fallback if parsing fails
+  }
+};
 
 const SecurityAudit: React.FC = () => {
   const [upperHeight, setUpperHeight] = useState(300);
@@ -48,6 +64,7 @@ const SecurityAudit: React.FC = () => {
   const [loadingCollections, setLoadingCollections] = useState(false);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [errorCollections, setErrorCollections] = useState<string | null>(null);
+  const [errorAnalytics, setErrorAnalytics] = useState<string | null>(null);
 
   // State for the "New Collection" dialog
   const [openNewCollectionDialog, setOpenNewCollectionDialog] = useState(false);
@@ -56,6 +73,30 @@ const SecurityAudit: React.FC = () => {
   const [newCollectionEndTime, setNewCollectionEndTime] = useState<Date | null>(new Date());
   const [newCollectionContinuePrevious, setNewCollectionContinuePrevious] = useState(false);
   const [newCollectionError, setNewCollectionError] = useState<string | null>(null);
+
+  // State for Context Menu
+  const [contextMenuAnchorEl, setContextMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedCollectionForMenu, setSelectedCollectionForMenu] = useState<CloudTrailCollection | null>(null);
+
+  // State for Analytics Dialog
+  const [analyticsDialogOpen, setAnalyticsDialogOpen] = useState(false);
+  const [analyticsDialogSeriesId, setAnalyticsDialogSeriesId] = useState('');
+  const [analyticsDialogStartTime, setAnalyticsDialogStartTime] = useState('');
+  const [analyticsDialogEndTime, setAnalyticsDialogEndTime] = useState('');
+  const [analyticsDialogError, setAnalyticsDialogError] = useState<string | null>(null);
+  const [analyticsSubmitting, setAnalyticsSubmitting] = useState(false);
+
+  // State for analytics filter
+  const [selectedSeriesIdForAnalyticsFilter, setSelectedSeriesIdForAnalyticsFilter] = useState<string | null>(null);
+
+  const [viewAnalyticsDialogOpen, setViewAnalyticsDialogOpen] = useState(false);
+  const [currentAnalyticsData, setCurrentAnalyticsData] = useState<any>(null);
+  const [loadingAnalyticsData, setLoadingAnalyticsData] = useState(false);
+
+  const [windowHeight, setWindowHeight] = useState<number>(800); // Default height
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [analyticsToDelete, setAnalyticsToDelete] = useState<{ seriesId: string; analysisId: string } | null>(null);
 
   const handleResizeStop: ResizeCallback = (e, direction, ref, d) => {
     setUpperHeight(upperHeight + d.height);
@@ -76,16 +117,16 @@ const SecurityAudit: React.FC = () => {
     }
   };
 
-  const fetchAnalytics = async () => {
+  const fetchAnalyticsResults = async (seriesIdForFilter?: string | null) => {
     setLoadingAnalytics(true);
+    setErrorAnalytics(null);
     try {
-      // Placeholder for fetching analytics data
-      // const data = await api.getAnalytics();
-      // For now, set to empty or handle appropriately if no API exists yet
-      setAnalytics([]); // Cleared sample data usage
-      console.log("Fetched analytics (cleared sample data)");
+      const data = await api.getAnalytics(seriesIdForFilter || undefined);
+      setAnalytics(data);
+      console.log("Fetched analytics results:", data);
     } catch (error) {
-      console.error("Error fetching analytics:", error);
+      console.error("Error fetching analytics results:", error);
+      setErrorAnalytics(error instanceof Error ? error.message : "Failed to fetch analytics results.");
     } finally {
       setLoadingAnalytics(false);
     }
@@ -94,7 +135,20 @@ const SecurityAudit: React.FC = () => {
   // Fetch data on component mount
   React.useEffect(() => {
     fetchCollections();
-    fetchAnalytics();
+    fetchAnalyticsResults();
+  }, []);
+
+  useEffect(() => {
+    // Set initial height
+    setWindowHeight(window.innerHeight);
+
+    // Update height on resize
+    const handleResize = () => {
+      setWindowHeight(window.innerHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleOpenNewCollectionDialog = () => {
@@ -109,6 +163,7 @@ const SecurityAudit: React.FC = () => {
     setNewCollectionStartTime(new Date());
     setNewCollectionEndTime(new Date());
     setNewCollectionContinuePrevious(false);
+    setNewCollectionError(null);
   };
 
   const handleCreateNewCollection = async () => {
@@ -167,6 +222,146 @@ const SecurityAudit: React.FC = () => {
     }
   };
 
+  // Context Menu Handlers
+  const handleContextMenuOpen = (event: React.MouseEvent<HTMLTableRowElement>, collection: CloudTrailCollection) => {
+    event.preventDefault();
+    setContextMenuAnchorEl(event.currentTarget);
+    setSelectedCollectionForMenu(collection);
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenuAnchorEl(null);
+    setSelectedCollectionForMenu(null);
+  };
+
+  // Analytics Dialog Handlers
+  const handleOpenAnalyticsDialog = () => {
+    if (selectedCollectionForMenu) {
+      setAnalyticsDialogSeriesId(selectedCollectionForMenu.seriesId);
+      setAnalyticsDialogStartTime(formatDateTimeForInput(selectedCollectionForMenu.firstEventTime));
+      setAnalyticsDialogEndTime(formatDateTimeForInput(selectedCollectionForMenu.lastEventTime));
+      setAnalyticsDialogOpen(true);
+      setAnalyticsDialogError(null);
+    }
+    handleContextMenuClose(); // Close context menu
+  };
+
+  const handleCloseAnalyticsDialog = () => {
+    setAnalyticsDialogOpen(false);
+    setAnalyticsDialogError(null);
+    setAnalyticsSubmitting(false);
+  };
+
+  const handleRunAnalyticsSubmit = async () => {
+    if (!analyticsDialogStartTime || !analyticsDialogEndTime) {
+      setAnalyticsDialogError("Start Time and End Time are required.");
+      return;
+    }
+    const startTime = new Date(analyticsDialogStartTime);
+    const endTime = new Date(analyticsDialogEndTime);
+
+    if (endTime <= startTime) {
+      setAnalyticsDialogError("End Time must be after Start Time.");
+      return;
+    }
+    setAnalyticsDialogError(null);
+    setAnalyticsSubmitting(true);
+    try {
+      const payload = {
+        seriesId: analyticsDialogSeriesId,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+      };
+      console.log("Submitting analytics request:", payload);
+      const result = await api.runComputeEventsAnalysis(payload);
+      console.log("Analytics submission result:", result);
+      // TODO: Handle result - maybe show a notification or update an analytics status table
+      handleCloseAnalyticsDialog();
+
+      // Set filter for analytics grid and trigger delayed refresh
+      setSelectedSeriesIdForAnalyticsFilter(analyticsDialogSeriesId);
+
+      setTimeout(() => {
+        console.log(`Refreshing analytics for ${analyticsDialogSeriesId} after 5s delay.`);
+        fetchAnalyticsResults(analyticsDialogSeriesId);
+      }, 5000); // 5 seconds delay
+
+    } catch (error) {
+      console.error("Error submitting analytics request:", error);
+      setAnalyticsDialogError(error instanceof Error ? error.message : "Failed to run analytics.");
+    } finally {
+      setAnalyticsSubmitting(false);
+    }
+  };
+
+  // Memoized filtered analytics results
+  const filteredAnalytics = useMemo(() => {
+    if (!selectedSeriesIdForAnalyticsFilter) {
+      return analytics; // Show all if no filter is set
+    }
+    return analytics.filter(item => item.seriesId === selectedSeriesIdForAnalyticsFilter);
+  }, [analytics, selectedSeriesIdForAnalyticsFilter]);
+
+  const handleViewAnalytics = async (seriesId: string, analysisId: string) => {
+    setLoadingAnalyticsData(true);
+    try {
+      const response = await api.getAnalyticsById(seriesId, analysisId);
+      setCurrentAnalyticsData(response);
+      setViewAnalyticsDialogOpen(true);
+    } catch (error) {
+      console.error('Error fetching analytics data:', error);
+      // You might want to show an error notification here
+    } finally {
+      setLoadingAnalyticsData(false);
+    }
+  };
+
+  const handleDownloadAnalytics = async (seriesId: string, analysisId: string) => {
+    try {
+      const response = await api.getAnalyticsById(seriesId, analysisId);
+      const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analytics-${seriesId}-${analysisId}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error downloading analytics data:', error);
+      // You might want to show an error notification here
+    }
+  };
+
+  const handleCloseViewAnalyticsDialog = () => {
+    setViewAnalyticsDialogOpen(false);
+    setCurrentAnalyticsData(null);
+  };
+
+  const handleDeleteClick = (seriesId: string, analysisId: string) => {
+    setAnalyticsToDelete({ seriesId, analysisId });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (analyticsToDelete) {
+      try {
+        await api.deleteAnalyticsById(analyticsToDelete.seriesId, analyticsToDelete.analysisId);
+        await fetchAnalyticsResults();
+      } catch (error) {
+        console.error('Error deleting analytics:', error);
+      }
+    }
+    setDeleteDialogOpen(false);
+    setAnalyticsToDelete(null);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setAnalyticsToDelete(null);
+  };
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Layout>
@@ -181,7 +376,7 @@ const SecurityAudit: React.FC = () => {
             onResizeStop={handleResizeStop}
             enable={{ bottom: true }}
             minHeight={200}
-            maxHeight={window.innerHeight - 400}
+            maxHeight={windowHeight - 400}
           >
             <Paper sx={{ height: '100%', mb: 2, overflow: 'hidden' }}>
               <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -195,7 +390,7 @@ const SecurityAudit: React.FC = () => {
                     onClick={fetchCollections}
                     disabled={loadingCollections}
                   >
-                    {loadingCollections ? 'Refreshing...' : 'Refresh'}
+                    {loadingCollections ? <CircularProgress size={24} /> : 'Refresh'}
                   </Button>
                   <Button
                     variant="contained"
@@ -209,8 +404,9 @@ const SecurityAudit: React.FC = () => {
                   <Button
                     variant="outlined"
                     startIcon={<FilterListIcon />}
+                    onClick={() => setSelectedSeriesIdForAnalyticsFilter(null)}
                   >
-                    Filter
+                    Clear Analytics Filter
                   </Button>
                 </Box>
               </Box>
@@ -235,7 +431,15 @@ const SecurityAudit: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {collections.map((row) => (
-                      <TableRow key={row.seriesId}>
+                      <TableRow 
+                        key={row.seriesId}
+                        hover
+                        onContextMenu={(event) => handleContextMenuOpen(event, row)}
+                        style={{ cursor: 'context-menu' }}
+                        sx={{
+                          backgroundColor: row.seriesId === selectedSeriesIdForAnalyticsFilter ? 'action.hover' : 'transparent',
+                        }}
+                      >
                         <TableCell>{row.seriesId}</TableCell>
                         <TableCell>{new Date(row.creationDate).toLocaleString()}</TableCell>
                         <TableCell>{new Date(row.lastUpdate).toLocaleString()}</TableCell>
@@ -252,52 +456,175 @@ const SecurityAudit: React.FC = () => {
             </Paper>
           </Resizable>
 
+          {/* Context Menu for Collections Table */}
+          <Menu
+            open={contextMenuAnchorEl !== null}
+            onClose={handleContextMenuClose}
+            anchorEl={contextMenuAnchorEl}
+            anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+          >
+            <MenuItem onClick={handleOpenAnalyticsDialog}>Run Analytics</MenuItem>
+          </Menu>
+
+          {/* Analytics Dialog */}
+          <Dialog open={analyticsDialogOpen} onClose={handleCloseAnalyticsDialog} maxWidth="sm" fullWidth>
+            <DialogTitle>Run Analytics for Collection</DialogTitle>
+            <DialogContent>
+              <TextField
+                label="Series ID"
+                value={analyticsDialogSeriesId}
+                fullWidth
+                margin="normal"
+                InputProps={{
+                  readOnly: true,
+                }}
+                variant="outlined"
+              />
+              <TextField
+                label="Start Time"
+                type="datetime-local"
+                value={analyticsDialogStartTime}
+                onChange={(e) => setAnalyticsDialogStartTime(e.target.value)}
+                fullWidth
+                margin="normal"
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                variant="outlined"
+              />
+              <TextField
+                label="End Time"
+                type="datetime-local"
+                value={analyticsDialogEndTime}
+                onChange={(e) => setAnalyticsDialogEndTime(e.target.value)}
+                fullWidth
+                margin="normal"
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                variant="outlined"
+              />
+              {analyticsDialogError && (
+                <Typography color="error" sx={{ mt: 2 }}>
+                  {analyticsDialogError}
+                </Typography>
+              )}
+            </DialogContent>
+            <DialogActions sx={{p: '16px 24px'}}>
+              <Button onClick={handleCloseAnalyticsDialog} color="primary" disabled={analyticsSubmitting}>
+                Cancel
+              </Button>
+              <Button onClick={handleRunAnalyticsSubmit} variant="contained" color="primary" disabled={analyticsSubmitting}>
+                {analyticsSubmitting ? 'Submitting...' : 'Submit'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
           {/* Analytics Grid */}
           <Paper sx={{ flex: 1, overflow: 'hidden' }}>
             <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="h6">Analytics</Typography>
+              <Typography variant="h6">Analytics Results {selectedSeriesIdForAnalyticsFilter ? `(Filtered for ${selectedSeriesIdForAnalyticsFilter})` : '(All Series)'}</Typography>
               <Box>
                 <Button
                   variant="contained"
                   color="primary"
                   startIcon={<RefreshIcon />}
                   sx={{ mr: 1 }}
-                  onClick={fetchAnalytics}
+                  onClick={() => fetchAnalyticsResults(selectedSeriesIdForAnalyticsFilter)}
                   disabled={loadingAnalytics}
                 >
-                  {loadingAnalytics ? 'Refreshing...' : 'Refresh'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<FilterListIcon />}
-                >
-                  Filter
+                  {loadingAnalytics ? <CircularProgress size={24} /> : 'Refresh'}
                 </Button>
               </Box>
             </Box>
-            <TableContainer sx={{ maxHeight: 'calc(100% - 70px)' }}>
+            {errorAnalytics && (
+                <Box sx={{ p: 2, pt: 0 }}><Typography color="error">Error: {errorAnalytics}</Typography></Box>
+            )}
+            <TableContainer sx={{ maxHeight: `calc(100% - ${errorAnalytics ? 90 : 70}px)` }}>
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
                     <TableCell>Series ID</TableCell>
+                    <TableCell>Analysis ID</TableCell>
                     <TableCell>Analysis Time</TableCell>
                     <TableCell>Start Time</TableCell>
                     <TableCell>End Time</TableCell>
                     <TableCell>Events Count</TableCell>
-                    <TableCell>Results</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Summary</TableCell>
+                    <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {analytics.map((row) => (
-                    <TableRow key={row.seriesId}>
+                  {filteredAnalytics.map((row) => (
+                    <TableRow key={`${row.seriesId}-${row.analysisTime}`}>
                       <TableCell>{row.seriesId}</TableCell>
+                      <TableCell>{row.analysisId}</TableCell>
                       <TableCell>{new Date(row.analysisTime).toLocaleString()}</TableCell>
-                      <TableCell>{new Date(row.startTime).toLocaleString()}</TableCell>
-                      <TableCell>{new Date(row.endTime).toLocaleString()}</TableCell>
+                      <TableCell>{new Date(row.results.parameters.startDate).toLocaleString()}</TableCell>
+                      <TableCell>{new Date(row.results.parameters.endDate).toLocaleString()}</TableCell>
                       <TableCell>{row.eventsCount}</TableCell>
-                      <TableCell>{row.results}</TableCell>
+                      <TableCell>{row.status}</TableCell>
+                      <TableCell>
+                        {row.results && (
+                          <Box>
+                            <Typography variant="body2">
+                              {`Total Events: ${row.results.summary.total_events_processed}`}
+                            </Typography>
+                            <Typography variant="body2">
+                              {`Security Events: ${row.results.summary.security_insights.total_security_events}`}
+                            </Typography>
+                            <Typography variant="body2">
+                              {`Operational Events: ${row.results.summary.operational_insights.total_operational_events}`}
+                            </Typography>
+                            <Typography variant="body2">
+                              {`Network Events: ${row.results.summary.network_insights.total_network_events}`}
+                            </Typography>
+                          </Box>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.status === 'Complete' && (
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Tooltip title="View Analysis">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleViewAnalytics(row.seriesId, row.analysisId)}
+                                disabled={loadingAnalyticsData}
+                              >
+                                <VisibilityIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Download Analysis">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDownloadAnalytics(row.seriesId, row.analysisId)}
+                              >
+                                <DownloadIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Analysis">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteClick(row.seriesId, row.analysisId)}
+                                color="error"
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
+                  {filteredAnalytics.length === 0 && !loadingAnalytics && (
+                    <TableRow>
+                      <TableCell colSpan={9} align="center">
+                        No analytics results found{selectedSeriesIdForAnalyticsFilter ? ` for series ${selectedSeriesIdForAnalyticsFilter}` : ''}.
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -359,6 +686,80 @@ const SecurityAudit: React.FC = () => {
             </Button>
             <Button onClick={handleCreateNewCollection} variant="contained" color="primary">
               Create
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* View Analytics Dialog */}
+        <Dialog
+          open={viewAnalyticsDialogOpen}
+          onClose={handleCloseViewAnalyticsDialog}
+          maxWidth="lg"
+          fullWidth
+        >
+          <DialogTitle>
+            Analytics Results
+            <IconButton
+              onClick={handleCloseViewAnalyticsDialog}
+              sx={{ position: 'absolute', right: 8, top: 8 }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent>
+            {currentAnalyticsData && (
+              <>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">
+                    Analysis ID: {currentAnalyticsData.analysisId}
+                  </Typography>
+                  <Box>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      onClick={() => handleDeleteClick(currentAnalyticsData.seriesId, currentAnalyticsData.analysisId)}
+                      sx={{ mr: 1 }}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => handleDownloadAnalytics(currentAnalyticsData.seriesId, currentAnalyticsData.analysisId)}
+                    >
+                      Download
+                    </Button>
+                  </Box>
+                </Box>
+                <Paper sx={{ p: 2, maxHeight: '60vh', overflow: 'auto' }}>
+                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {JSON.stringify(currentAnalyticsData, null, 2)}
+                  </pre>
+                </Paper>
+              </>
+            )}
+            {loadingAnalyticsData && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                <CircularProgress />
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={handleDeleteCancel}
+        >
+          <DialogTitle>Confirm Delete</DialogTitle>
+          <DialogContent>
+            <Typography>
+              Are you sure you want to delete this analytics result? This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleDeleteCancel}>Cancel</Button>
+            <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+              Delete
             </Button>
           </DialogActions>
         </Dialog>
