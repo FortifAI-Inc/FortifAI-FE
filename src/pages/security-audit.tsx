@@ -297,9 +297,9 @@ const SecurityAudit: React.FC = () => {
   // Memoized filtered analytics results
   const filteredAnalytics = useMemo(() => {
     if (!selectedSeriesIdForAnalyticsFilter) {
-      return analytics; // Show all if no filter is set
+      return analytics;
     }
-    return analytics.filter(item => item.seriesId === selectedSeriesIdForAnalyticsFilter);
+    return analytics.filter(analysis => analysis.seriesId === selectedSeriesIdForAnalyticsFilter);
   }, [analytics, selectedSeriesIdForAnalyticsFilter]);
 
   const handleViewAnalytics = async (seriesId: string, analysisId: string) => {
@@ -360,6 +360,10 @@ const SecurityAudit: React.FC = () => {
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false);
     setAnalyticsToDelete(null);
+  };
+
+  const handleCollectionRowClick = (collection: CloudTrailCollection) => {
+    setSelectedSeriesIdForAnalyticsFilter(collection.seriesId);
   };
 
   return (
@@ -430,26 +434,47 @@ const SecurityAudit: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {collections.map((row) => (
-                      <TableRow 
-                        key={row.seriesId}
-                        hover
-                        onContextMenu={(event) => handleContextMenuOpen(event, row)}
-                        style={{ cursor: 'context-menu' }}
-                        sx={{
-                          backgroundColor: row.seriesId === selectedSeriesIdForAnalyticsFilter ? 'action.hover' : 'transparent',
-                        }}
-                      >
-                        <TableCell>{row.seriesId}</TableCell>
-                        <TableCell>{new Date(row.creationDate).toLocaleString()}</TableCell>
-                        <TableCell>{new Date(row.lastUpdate).toLocaleString()}</TableCell>
-                        <TableCell>{row.eventCount}</TableCell>
-                        <TableCell>{new Date(row.firstEventTime).toLocaleString()}</TableCell>
-                        <TableCell>{new Date(row.lastEventTime).toLocaleString()}</TableCell>
-                        <TableCell>{row.status}</TableCell>
-                        <TableCell>{row.filter}</TableCell>
+                    {loadingCollections ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">
+                          <CircularProgress />
+                        </TableCell>
                       </TableRow>
-                    ))}
+                    ) : errorCollections ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center" sx={{ color: 'error.main' }}>
+                          {errorCollections}
+                        </TableCell>
+                      </TableRow>
+                    ) : collections.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} align="center">
+                          No collections found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      collections.map((collection) => (
+                        <TableRow
+                          key={collection.seriesId}
+                          onClick={() => handleCollectionRowClick(collection)}
+                          onContextMenu={(e) => handleContextMenuOpen(e, collection)}
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: selectedSeriesIdForAnalyticsFilter === collection.seriesId ? 'action.selected' : 'inherit',
+                            '&:hover': { backgroundColor: 'action.hover' }
+                          }}
+                        >
+                          <TableCell>{collection.seriesId}</TableCell>
+                          <TableCell>{new Date(collection.creationDate).toLocaleString()}</TableCell>
+                          <TableCell>{new Date(collection.lastUpdate).toLocaleString()}</TableCell>
+                          <TableCell>{collection.eventCount}</TableCell>
+                          <TableCell>{new Date(collection.firstEventTime).toLocaleString()}</TableCell>
+                          <TableCell>{new Date(collection.lastEventTime).toLocaleString()}</TableCell>
+                          <TableCell>{collection.status}</TableCell>
+                          <TableCell>{collection.filter}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -557,73 +582,95 @@ const SecurityAudit: React.FC = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredAnalytics.map((row) => (
-                    <TableRow key={`${row.seriesId}-${row.analysisTime}`}>
-                      <TableCell>{row.seriesId}</TableCell>
-                      <TableCell>{row.analysisId}</TableCell>
-                      <TableCell>{new Date(row.analysisTime).toLocaleString()}</TableCell>
-                      <TableCell>{new Date(row.results.parameters.startDate).toLocaleString()}</TableCell>
-                      <TableCell>{new Date(row.results.parameters.endDate).toLocaleString()}</TableCell>
-                      <TableCell>{row.eventsCount}</TableCell>
-                      <TableCell>{row.status}</TableCell>
-                      <TableCell>
-                        {row.results && (
-                          <Box>
-                            <Typography variant="body2">
-                              {`Total Events: ${row.results.summary.total_events_processed}`}
-                            </Typography>
-                            <Typography variant="body2">
-                              {`Security Events: ${row.results.summary.security_insights.total_security_events}`}
-                            </Typography>
-                            <Typography variant="body2">
-                              {`Operational Events: ${row.results.summary.operational_insights.total_operational_events}`}
-                            </Typography>
-                            <Typography variant="body2">
-                              {`Network Events: ${row.results.summary.network_insights.total_network_events}`}
-                            </Typography>
-                          </Box>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {row.status === 'Complete' && (
-                          <Box sx={{ display: 'flex', gap: 1 }}>
-                            <Tooltip title="View Analysis">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleViewAnalytics(row.seriesId, row.analysisId)}
-                                disabled={loadingAnalyticsData}
-                              >
-                                <VisibilityIcon />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Download Analysis">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDownloadAnalytics(row.seriesId, row.analysisId)}
-                              >
-                                <DownloadIcon />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Delete Analysis">
-                              <IconButton
-                                size="small"
-                                onClick={() => handleDeleteClick(row.seriesId, row.analysisId)}
-                                color="error"
-                              >
-                                <DeleteIcon />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        )}
+                  {loadingAnalytics ? (
+                    <TableRow>
+                      <TableCell colSpan={9} align="center">
+                        <CircularProgress />
                       </TableCell>
                     </TableRow>
-                  ))}
-                  {filteredAnalytics.length === 0 && !loadingAnalytics && (
+                  ) : errorAnalytics ? (
+                    <TableRow>
+                      <TableCell colSpan={9} align="center" sx={{ color: 'error.main' }}>
+                        {errorAnalytics}
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredAnalytics.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} align="center">
                         No analytics results found{selectedSeriesIdForAnalyticsFilter ? ` for series ${selectedSeriesIdForAnalyticsFilter}` : ''}.
                       </TableCell>
                     </TableRow>
+                  ) : (
+                    filteredAnalytics.map((row: AnalyticsResult) => (
+                      <TableRow key={`${row.seriesId}-${row.analysisTime}`}>
+                        <TableCell>{row.seriesId}</TableCell>
+                        <TableCell>{row.analysisId}</TableCell>
+                        <TableCell>{new Date(row.analysisTime).toLocaleString()}</TableCell>
+                        <TableCell>{new Date(row.results.parameters.startDate).toLocaleString()}</TableCell>
+                        <TableCell>{new Date(row.results.parameters.endDate).toLocaleString()}</TableCell>
+                        <TableCell>{row.eventsCount}</TableCell>
+                        <TableCell>{row.status}</TableCell>
+                        <TableCell>
+                          {row.results && (
+                            <Box>
+                              <Typography variant="body2">
+                                {`Total Events: ${row.results.summary.total_events_processed}`}
+                              </Typography>
+                              <Typography variant="body2">
+                                {`Security Events: ${row.results.summary.security_insights.total_security_events}`}
+                              </Typography>
+                              <Typography variant="body2">
+                                {`Operational Events: ${row.results.summary.operational_insights.total_operational_events}`}
+                              </Typography>
+                              <Typography variant="body2">
+                                {`Network Events: ${row.results.summary.network_insights.total_network_events}`}
+                              </Typography>
+                            </Box>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.status === 'Complete' && (
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Tooltip title="View Analysis">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e: React.MouseEvent) => {
+                                    e.stopPropagation();
+                                    handleViewAnalytics(row.seriesId, row.analysisId);
+                                  }}
+                                  disabled={loadingAnalyticsData}
+                                >
+                                  <VisibilityIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Download Analysis">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadAnalytics(row.seriesId, row.analysisId);
+                                  }}
+                                >
+                                  <DownloadIcon />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete Analysis">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClick(row.seriesId, row.analysisId);
+                                  }}
+                                  color="error"
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
                   )}
                 </TableBody>
               </Table>
@@ -717,14 +764,20 @@ const SecurityAudit: React.FC = () => {
                     <Button
                       variant="outlined"
                       color="error"
-                      onClick={() => handleDeleteClick(currentAnalyticsData.seriesId, currentAnalyticsData.analysisId)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(currentAnalyticsData.seriesId, currentAnalyticsData.analysisId);
+                      }}
                       sx={{ mr: 1 }}
                     >
                       Delete
                     </Button>
                     <Button
                       variant="outlined"
-                      onClick={() => handleDownloadAnalytics(currentAnalyticsData.seriesId, currentAnalyticsData.analysisId)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadAnalytics(currentAnalyticsData.seriesId, currentAnalyticsData.analysisId);
+                      }}
                     >
                       Download
                     </Button>
