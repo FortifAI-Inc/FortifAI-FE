@@ -47,6 +47,7 @@ interface BaseMetadata {
   ai_detection_details?: string;
   is_ignored?: boolean;
   is_sandbox?: boolean;
+  is_glassbox?: boolean;
   tags?: Tag;
   x?: number;
   y?: number;
@@ -192,6 +193,7 @@ interface IAMUserNode extends Node {
 
 const AI_SPM: React.FC = () => {
   const [sandboxVpcId, setSandboxVpcId] = useState<string | null>(null);
+  const [glassBoxVpcId, setGlassBoxVpcId] = useState<string | null>(null);
   const [sandPatternImage, setSandPatternImage] = useState<HTMLImageElement | null>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -569,10 +571,174 @@ const AI_SPM: React.FC = () => {
     ctx.globalAlpha = 1.0;
   };
 
+  const drawGlassBackground = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) => {
+    ctx.save();
+    
+    // Create clipping region to ensure nothing escapes the box boundaries
+    ctx.beginPath();
+    ctx.rect(x, y, width, height);
+    ctx.clip();
+    
+    // Base glass background with more pronounced blue-white gradient
+    const gradient = ctx.createLinearGradient(x, y, x, y + height);
+    gradient.addColorStop(0, 'rgba(220, 240, 255, 0.9)'); // More opaque light blue at top
+    gradient.addColorStop(0.3, 'rgba(235, 248, 255, 0.7)'); // Very light blue
+    gradient.addColorStop(0.7, 'rgba(210, 235, 255, 0.8)'); // Slightly more blue
+    gradient.addColorStop(1, 'rgba(190, 220, 250, 0.9)'); // Deeper blue at bottom
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, width, height);
+    
+    // Add multiple glass reflection effects for more realism
+    
+    // Main diagonal reflection (top-left) - much more visible
+    const reflectionGradient1 = ctx.createLinearGradient(x, y, x + width * 0.5, y + height * 0.5);
+    reflectionGradient1.addColorStop(0, 'rgba(255, 255, 255, 0.9)'); // Much more opaque
+    reflectionGradient1.addColorStop(0.3, 'rgba(255, 255, 255, 0.6)');
+    reflectionGradient1.addColorStop(0.7, 'rgba(255, 255, 255, 0.3)');
+    reflectionGradient1.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = reflectionGradient1;
+    ctx.fillRect(x, y, width * 0.5, height * 0.5);
+    
+    // Secondary reflection (bottom-right) - more visible
+    const reflectionGradient2 = ctx.createLinearGradient(x + width * 0.5, y + height * 0.5, x + width, y + height);
+    reflectionGradient2.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    reflectionGradient2.addColorStop(0.3, 'rgba(255, 255, 255, 0.3)');
+    reflectionGradient2.addColorStop(0.7, 'rgba(255, 255, 255, 0.5)');
+    reflectionGradient2.addColorStop(1, 'rgba(255, 255, 255, 0.7)');
+    
+    ctx.fillStyle = reflectionGradient2;
+    ctx.fillRect(x + width * 0.5, y + height * 0.5, width * 0.5, height * 0.5);
+    
+    // Add vertical reflection strip (simulating window reflection)
+    const verticalReflection = ctx.createLinearGradient(x + width * 0.2, y, x + width * 0.4, y);
+    verticalReflection.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    verticalReflection.addColorStop(0.5, 'rgba(255, 255, 255, 0.6)');
+    verticalReflection.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = verticalReflection;
+    ctx.fillRect(x + width * 0.2, y, width * 0.2, height);
+    
+    // Add glass texture with properly clipped diagonal pattern
+    ctx.strokeStyle = 'rgba(160, 200, 240, 0.6)';
+    ctx.lineWidth = 1;
+    
+    // Diagonal grid pattern - properly contained within bounds
+    const gridSize = 30;
+    
+    // Draw diagonal lines from top-left to bottom-right
+    for (let i = -height; i <= width; i += gridSize) {
+      ctx.beginPath();
+      const startX = Math.max(x, x + i);
+      const startY = i < 0 ? y - i : y;
+      const endX = Math.min(x + width, x + i + height);
+      const endY = i < 0 ? y + height : y + height - (i - width);
+      
+      if (startX < x + width && startY < y + height && endX > x && endY > y) {
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    }
+    
+    // Draw diagonal lines from top-right to bottom-left
+    for (let i = 0; i <= width + height; i += gridSize) {
+      ctx.beginPath();
+      const startX = Math.min(x + width, x + i);
+      const startY = i > width ? y + (i - width) : y;
+      const endX = Math.max(x, x + i - height);
+      const endY = i > width ? y + height : y + i;
+      
+      if (startX > x && startY < y + height && endX < x + width && endY > y) {
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    }
+    
+    // Add some subtle "cracks" or stress lines - properly contained
+    ctx.strokeStyle = 'rgba(140, 180, 220, 0.8)';
+    ctx.lineWidth = 2;
+    
+    // Fixed crack pattern (not random to avoid escaping bounds)
+    const cracks = [
+      { startX: x + width * 0.15, startY: y + height * 0.2, endX: x + width * 0.35, endY: y + height * 0.6 },
+      { startX: x + width * 0.6, startY: y + height * 0.1, endX: x + width * 0.8, endY: y + height * 0.4 },
+      { startX: x + width * 0.3, startY: y + height * 0.7, endX: x + width * 0.5, endY: y + height * 0.9 }
+    ];
+    
+    cracks.forEach(crack => {
+      ctx.beginPath();
+      ctx.moveTo(crack.startX, crack.startY);
+      
+      // Create a jagged crack line with controlled segments
+      const segments = 4;
+      for (let j = 1; j <= segments; j++) {
+        const progress = j / segments;
+        const segmentX = crack.startX + (crack.endX - crack.startX) * progress + (Math.sin(progress * Math.PI * 2) * 8);
+        const segmentY = crack.startY + (crack.endY - crack.startY) * progress + (Math.cos(progress * Math.PI * 3) * 6);
+        
+        // Ensure segments stay within bounds
+        const clampedX = Math.max(x, Math.min(x + width, segmentX));
+        const clampedY = Math.max(y, Math.min(y + height, segmentY));
+        
+        ctx.lineTo(clampedX, clampedY);
+      }
+      ctx.stroke();
+    });
+    
+    // Add frosted glass effect with more visible dots
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; // More opaque
+    for (let i = 0; i < 80; i++) { // More dots
+      const dotX = x + Math.random() * width;
+      const dotY = y + Math.random() * height;
+      const radius = Math.random() * 3 + 1; // Larger dots
+      
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Add smaller frosted dots for texture
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    for (let i = 0; i < 120; i++) {
+      const dotX = x + Math.random() * width;
+      const dotY = y + Math.random() * height;
+      const radius = Math.random() * 1.5 + 0.5;
+      
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    ctx.restore(); // This removes the clipping region
+    
+    // Draw borders after restoring (so they're not clipped)
+    ctx.save();
+    
+    // Add a more prominent border with glass-like shimmer
+    ctx.strokeStyle = 'rgba(100, 180, 255, 0.9)'; // More visible blue border
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+    
+    // Inner highlight border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; // More visible
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 3, y + 3, width - 6, height - 6);
+    
+    ctx.restore();
+  };
+
   const drawFrame = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, title: string, color: string) => {
     // If this is a sandbox VPC, draw sandy background first
     if (title.includes('Sandbox')) {
       drawSandboxBackground(ctx, x, y, width, height);
+    }
+    
+    // If this is a GlassBOX VPC, draw glass background first
+    if (title.includes('GlassBOX')) {
+      drawGlassBackground(ctx, x, y, width, height);
     }
 
     // Draw frame border
@@ -875,8 +1041,9 @@ const AI_SPM: React.FC = () => {
         const nameTagValue = tagsObj['Name'];
         const envTagValue = tagsObj['Environment'];
 
-        // Check if the VPC name itself contains "Sandbox" as a fallback
+        // Check if the VPC name itself contains "Sandbox" or "GlassBOX" as a fallback
         const nameContainsSandbox = vpc.name.includes('Sandbox');
+        const nameContainsGlassBox = vpc.name.includes('GlassBOX');
 
         if (nameTagValue === 'Sandbox') {
           vpc.metadata.is_sandbox = true;
@@ -894,6 +1061,14 @@ const AI_SPM: React.FC = () => {
             setSandboxVpcId(vpc.metadata.vpc_id);
           }
         }
+
+        // Check for GlassBOX VPC
+        if (nameTagValue === 'GlassBOX' || nameContainsGlassBox) {
+          vpc.metadata.is_glassbox = true;
+          if (vpc.metadata.vpc_id) {
+            setGlassBoxVpcId(vpc.metadata.vpc_id);
+          }
+        }
       }
 
       vpc.metadata.width = (mainFrameWidth - 2 * fixedSectionSpacing - (vpcs.length - 1) * 20) / vpcs.length;
@@ -909,10 +1084,15 @@ const AI_SPM: React.FC = () => {
         (node as EC2Node).metadata.vpc_id === vpc.metadata.vpc_id
       );
 
-      // Use green color for sandbox VPC with AI instances, otherwise use warning color
-      const frameColor = vpc.metadata.is_sandbox && hasAIInstance
-        ? theme.palette.success.main
-        : theme.palette.warning.main;
+      // Determine frame color based on VPC type and AI instances
+      let frameColor;
+      if (vpc.metadata.is_glassbox) {
+        frameColor = theme.palette.info.main; // Blue for GlassBOX VPCs
+      } else if (vpc.metadata.is_sandbox && hasAIInstance) {
+        frameColor = theme.palette.success.main; // Green for sandbox VPC with AI instances
+      } else {
+        frameColor = theme.palette.warning.main; // Orange for regular VPCs
+      }
 
       if (nameTag) {
         drawFrame(ctx, vpcX, vpcY, vpc.metadata.width, vpc.metadata.height, nameTag + " - " + vpc.name, frameColor);
@@ -1368,6 +1548,49 @@ const AI_SPM: React.FC = () => {
     }
   };
 
+  const handleGlassBoxAction = async () => {
+    if (!contextMenu?.node) return;
+
+    const node = contextMenu.node as EC2Node;
+    let instanceId = node.metadata.instance_id;
+
+    // If instance_id is not in metadata, try to extract it from the node ID
+    if (!instanceId && node.id.startsWith('AssetType.ec2_')) {
+      instanceId = node.id.substring('AssetType.ec2_'.length);
+    }
+
+    if (!instanceId) {
+      console.error('No instance ID found in node metadata or ID:', node);
+      setDetectionError('Failed to get instance ID');
+      return;
+    }
+
+    if (!glassBoxVpcId) {
+      console.error('GlassBOX VPC ID not found');
+      setDetectionError('GlassBOX VPC not found');
+      return;
+    }
+
+    try {
+      // Show a temporary notification that auto-dismisses after 5 seconds
+      setTempNotification('Relocating instance to GlassBOX...');
+
+      // Call the relocate-ec2 endpoint with the instance ID and target VPC
+      const response = await api.post('/api/sandbox-enforcer/relocate-ec2', {
+        instance_id: instanceId,
+        target_vpc_id: glassBoxVpcId
+      });
+
+      // Refresh the graph data to show updated instance location
+      await handleRefresh();
+    } catch (err) {
+      console.error('Error processing GlassBOX action:', err);
+      setDetectionError(err instanceof Error ? err.message : 'Failed to relocate instance to GlassBOX');
+    } finally {
+      handleContextMenuClose();
+    }
+  };
+
   // Update the useEffect that processes VPCs
   useEffect(() => {
     if (graphData) {
@@ -1384,8 +1607,9 @@ const AI_SPM: React.FC = () => {
           const nameTagValue = tagsObj['Name'];
           const envTagValue = tagsObj['Environment'];
 
-          // Check if the VPC name itself contains "Sandbox" as a fallback
+          // Check if the VPC name itself contains "Sandbox" or "GlassBOX" as a fallback
           const nameContainsSandbox = vpc.name.includes('Sandbox');
+          const nameContainsGlassBox = vpc.name.includes('GlassBOX');
 
           if (nameTagValue === 'Sandbox') {
             vpc.metadata.is_sandbox = true;
@@ -1401,6 +1625,14 @@ const AI_SPM: React.FC = () => {
             vpc.metadata.is_sandbox = true;
             if (vpc.metadata.vpc_id) {
               setSandboxVpcId(vpc.metadata.vpc_id);
+            }
+          }
+
+          // Check for GlassBOX VPC
+          if (nameTagValue === 'GlassBOX' || nameContainsGlassBox) {
+            vpc.metadata.is_glassbox = true;
+            if (vpc.metadata.vpc_id) {
+              setGlassBoxVpcId(vpc.metadata.vpc_id);
             }
           }
         }
@@ -1465,6 +1697,16 @@ const AI_SPM: React.FC = () => {
         (node.metadata.tags && (node.metadata.tags as unknown as Record<string, string>)['Name'] === 'Sandbox') ||
         (node.metadata.tags && (node.metadata.tags as unknown as Record<string, string>)['Environment'] === 'Sandbox') ||
         node.name.includes('Sandbox')
+      )
+    );
+  };
+
+  // Function to find GlassBOX VPCs
+  const findGlassBoxVPC = (nodes: Node[]): Node | undefined => {
+    return nodes.find(node =>
+      node.type === 'VPC' && (
+        (node.metadata.tags && (node.metadata.tags as unknown as Record<string, string>)['Name'] === 'GlassBOX') ||
+        node.name.includes('GlassBOX')
       )
     );
   };
@@ -1991,6 +2233,7 @@ const AI_SPM: React.FC = () => {
         >
           <MenuItem onClick={handleAIDetails}>View AI Details</MenuItem>
           <MenuItem onClick={handleFortifAIAction}>Move to Sandbox</MenuItem>
+          <MenuItem onClick={handleGlassBoxAction}>Move to GlassBOX</MenuItem>
           <Divider />
           <MenuItem onClick={handleFlowLogToggle}>
             {contextMenu?.node?.metadata.has_flow_logs ? 'Disable Flow Logs' : 'Enable Flow Logs'}
