@@ -574,6 +574,89 @@ export class ApiService {
       throw error;
     }
   }
+
+  // Glassbox Activity Log APIs
+  async getAgents(): Promise<any[]> {
+    try {
+      console.log('Fetching agents...');
+      const endpoint = 'agents';  // This will route to data-access-service via API gateway
+      const response = await this.fetchWithAuth(endpoint);
+      console.log('Raw agents response:', response);
+      
+      if (!response) {
+        console.error('No response received from agents endpoint');
+        return [];
+      }
+      
+      if (response.agents && Array.isArray(response.agents)) {
+        console.log('Successfully parsed agents:', response.agents);
+        return response.agents;
+      }
+      
+      if (Array.isArray(response)) {
+        console.log('Response is array, returning directly:', response);
+        return response;
+      }
+      
+      console.error('Unexpected response format for agents:', response);
+      return [];
+    } catch (error) {
+      console.error('Error fetching agents:', error);
+      throw error;
+    }
+  }
+
+  async getEvents(params: {
+    agent_id?: string;
+    start_time?: string;
+    end_time?: string;
+    event_type?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.agent_id) queryParams.append('agent_id', params.agent_id);
+      if (params.start_time) queryParams.append('start_time', params.start_time);
+      if (params.end_time) queryParams.append('end_time', params.end_time);
+      if (params.event_type) queryParams.append('event_type', params.event_type);
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.offset) queryParams.append('offset', params.offset.toString());
+      
+      const endpoint = `events-logger/events/search?${queryParams.toString()}`;
+      const response = await this.fetchWithAuth(endpoint);
+      return response;
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      throw error;
+    }
+  }
+
+  async getEventById(eventId: string): Promise<any> {
+    try {
+      const endpoint = `events-logger/events/${eventId}`;
+      const response = await this.fetchWithAuth(endpoint);
+      return response;
+    } catch (error) {
+      console.error('Error fetching event by ID:', error);
+      throw error;
+    }
+  }
+
+  async getEventStats(agentId?: string, timeRange?: string): Promise<any> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (agentId) queryParams.append('agent_id', agentId);
+      if (timeRange) queryParams.append('time_range', timeRange);
+      
+      const endpoint = `events-logger/stats?${queryParams.toString()}`;
+      const response = await this.fetchWithAuth(endpoint);
+      return response;
+    } catch (error) {
+      console.error('Error fetching event stats:', error);
+      throw error;
+    }
+  }
 }
 
 export const api = new ApiService();

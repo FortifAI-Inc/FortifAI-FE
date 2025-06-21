@@ -6,6 +6,7 @@ import {
   Security as SecurityIcon,
   Menu as MenuIcon,
   Assessment as AssessmentIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -41,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'AI - SPM', icon: <SecurityIcon />, path: '/ai-spm' },
     { text: 'Security Audit', icon: <AssessmentIcon />, path: '/security-audit' },
+    { text: 'Glassbox Activity Log', icon: <TimelineIcon />, path: '/glassbox-activity' },
   ];
 
   return (

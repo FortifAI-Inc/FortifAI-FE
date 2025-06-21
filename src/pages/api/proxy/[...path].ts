@@ -1,7 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import https from 'https';
-import http from 'http';
 import fetch from 'node-fetch';
+import https from 'https';
 import { config, API_VERSION } from '../../../config';
 
 // Create an HTTPS agent that ignores self-signed certificate errors
@@ -28,48 +27,70 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Handle all other API requests
   try {
-    // Extract the service name and path from the API path
-    const pathParts = apiPath.split('/');
-    const serviceName = pathParts[0];
-    const servicePath = pathParts.slice(1).join('/');
+    let targetUrl: string;
     
-    // Always construct the URL with api/v1 prefix
-    const targetUrl = `${config.apiGatewayUrl}/api/v1/${serviceName}/${servicePath}`;
+    // Special handling for direct endpoints that don't follow service/path pattern
+    if (apiPath === 'agents') {
+      targetUrl = `${config.apiGatewayUrl}/api/v1/agents`;
+    } else {
+      // For service-based endpoints like 'events-logger/events/search'
+      targetUrl = `${config.apiGatewayUrl}/api/v1/${apiPath}`;
+    }
     
-    console.error('Target URL:', targetUrl);
+    // Add query parameters if present
+    const url = new URL(targetUrl);
+    Object.keys(req.query).forEach(key => {
+      if (key !== 'path') {
+        const value = req.query[key];
+        if (Array.isArray(value)) {
+          value.forEach(v => url.searchParams.append(key, v));
+        } else if (value) {
+          url.searchParams.append(key, value);
+        }
+      }
+    });
     
-    // Prepare headers
+    console.log(`Target URL: ${url.toString()}`);
+    
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Host': new URL(config.apiGatewayUrl).host,
+      'Accept-Encoding': 'identity', // Disable compression to avoid gzip issues
     };
 
-    // Add authorization header if present
+    // Forward authorization header if present
     if (req.headers.authorization) {
-      headers['Authorization'] = req.headers.authorization;
+      headers.Authorization = req.headers.authorization;
     }
 
-    // Forward the request to the API gateway
-    const response = await fetch(targetUrl, {
+    const requestOptions: any = {
       method: req.method,
       headers,
-      body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
       agent, // Use the agent that ignores SSL certificate validation
-    });
+    };
 
-    // Check content type
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      // Handle JSON response
-      const data = await response.json();
-      res.status(response.status).json(data);
-    } else {
-      // Handle non-JSON response
-      const text = await response.text();
-      res.status(response.status).send(text);
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      requestOptions.body = JSON.stringify(req.body);
     }
-  } catch (error) {
-    console.error('Error in API proxy:', error);
-    res.status(500).json({ error: 'Failed to proxy request' });
+
+    const response = await fetch(url.toString(), requestOptions);
+    
+    if (!response.ok) {
+      console.error(`API request failed: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`Error response: ${errorText}`);
+      return res.status(response.status).json({ 
+        error: `API request failed: ${response.status} ${response.statusText}`,
+        details: errorText
+      });
+    }
+
+    const data = await response.json();
+    return res.status(200).json(data);
+  } catch (error: any) {
+    console.error('Proxy error:', error);
+    return res.status(500).json({ 
+      error: 'Failed to proxy request',
+      details: error.message 
+    });
   }
 } 
